@@ -1,3 +1,9 @@
+# TODO
+
+タガーを切り出してパッケージ化
+
+スコアリング系は別に切り出して､(別の)としあき製のユーザー学習可能なスコアリングモジュールと混ぜ合わせる
+
 # Dataset Tag Editor Standalone
 
 [日本語 Readme](README-JP.md)
