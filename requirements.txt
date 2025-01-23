@@ -8,4 +8,3 @@ torchvision
 tqdm
 timm>=1.0.8
 print-color
-fastapi==0.112.4

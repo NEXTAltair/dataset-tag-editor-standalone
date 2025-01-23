@@ -1,0 +1,85 @@
+[project]
+name = "dataset-tag-editor"
+version = "0.1.0"
+description = "Dataset tag editor with image interrogator support"
+requires-python = ">=3.12"  # Python 3.12以上を要求
+dependencies = [
+    "gradio==4.28.3",
+    "transformers>=4.27.4",
+    "requests",
+    "pillow",
+    "numpy",
+    "tqdm",
+    "timm>=1.0.8",
+    "print-color",
+    "fastapi==0.112.4",
+]
+
+[project.optional-dependencies]
+# CUDA 11.8
+cu118 = [
+    "torch==2.5.1+cu118",
+    "torchvision==2.5.1+cu118",
+    "torchaudio==2.5.1+cu118"
+]
+# CUDA 12.1
+cu121 = [
+    "torch==2.5.1+cu121",
+    "torchvision==2.5.1+cu121",
+    "torchaudio==2.5.1+cu121"
+]
+# CUDA 12.4
+cu124 = [
+    "torch==2.5.1+cu124",
+    "torchvision==2.5.1+cu124",
+    "torchaudio==2.5.1+cu124"
+]
+# CPU only
+cpu = [
+    "torch==2.5.1",
+    "torchvision==2.5.1",
+    "torchaudio==2.5.1"
+]
+# 開発用
+dev = [
+    # テスト関連
+    "pytest>=7.4.0",        # Python 3.12対応バージョン
+    "pytest-cov>=4.1.0",    # 最新の安定版
+    # コード品質管理
+    "ruff>=0.1.9",         # Python 3.12対応の最新版
+    "isort>=5.13.0",       # Python 3.12対応バージョン
+    "mypy>=1.8.0"          # Python 3.12対応の最新版
+]
+
+[tool.ruff]
+# ruffの設定
+line-length = 88
+target-version = "py312"    # Python 3.12を対象に
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+]
+
+[tool.mypy]
+python_version = "3.12"     # Python 3.12を指定
+strict = true              # 厳格な型チェック
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "scripts/dataset_tag_editor",
+    "userscripts"
+]
+
+[project.scripts]
+dataset-tag-editor = "scripts.interface:main"
+
+[project.urls]
+Homepage = "https://github.com/toshiaki1729/dataset-tag-editor-standalone"
+Documentation = "https://github.com/toshiaki1729/dataset-tag-editor-standalone/blob/main/README.md"
+Repository = "https://github.com/toshiaki1729/dataset-tag-editor-standalone.git"

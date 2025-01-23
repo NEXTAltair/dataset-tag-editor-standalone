@@ -3,8 +3,8 @@ import os
 import subprocess
 import sys
 
-import cmd_args, logger
-
+import cmd_args
+import logger
 
 # ================================================================
 # brought from AUTOMATIC1111/stable-diffusion-webui and modified
