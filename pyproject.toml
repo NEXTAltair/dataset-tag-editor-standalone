@@ -51,6 +51,16 @@ dev = [
     "mypy>=1.8.0"          # Python 3.12対応の最新版
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--import-mode=importlib"
+]
+pythonpath = ["."]
+
 [tool.ruff]
 # ruffの設定
 line-length = 88
@@ -72,8 +82,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = [
-    "scripts/dataset_tag_editor",
-    "userscripts"
+    "scripts",
+    "userscripts",
+    "lib/tagger",
+    "lib/scorer"
 ]
 
 [project.scripts]
