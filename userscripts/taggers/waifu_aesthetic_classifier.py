@@ -48,7 +48,7 @@ class WaifuAesthetic(Tagger):
         self.model = self.model.to(devices.device)
         self.clip_processor = CLIPProcessor.from_pretrained(CLIP_REPOS)
         self.clip_model = CLIPModel.from_pretrained(CLIP_REPOS).to(devices.device).eval()
-    
+
     def unload(self):
         if not settings.current.interrogator_keep_in_memory:
             self.model = None
@@ -68,6 +68,16 @@ class WaifuAesthetic(Tagger):
         prediction:torch.Tensor = self.model(torch.from_numpy(image_embeds).float().to(devices.device))
         # edit here to change tag
         return [f"[WD]score_{math.floor(prediction.item()*10)}"]
+
+    def predict_pipe(self, data: list[Image.Image], threshold=None):
+        if data is None:
+            return
+
+        for image in data:
+            # 現在のpredictメソッドの処理を流用
+            image_embeds = image_embeddings(image, self.clip_model, self.clip_processor)
+            prediction = self.model(torch.from_numpy(image_embeds).float().to(devices.device))
+            yield [f"[WD]score_{math.floor(prediction.item()*10)}"]
 
     def name(self):
         return "wd aesthetic classifier"
