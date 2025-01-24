@@ -1,5 +1,5 @@
-# This code is using the image classification "aesthetic-shadow-v2" by shadowlilac (https://huggingface.co/shadowlilac/aesthetic-shadow-v2)
-# and "aesthetic-shadow-v2" is licensed under CC-BY-NC 4.0 (https://spdx.org/licenses/CC-BY-NC-4.0)
+# This code is using the image classification "aesthetic-shadow" by shadowlilac (https://huggingface.co/shadowlilac/aesthetic-shadow)
+# and "aesthetic-shadow" is licensed under CC-BY-NC 4.0 (https://spdx.org/licenses/CC-BY-NC-4.0)
 
 import math
 
@@ -16,21 +16,21 @@ BATCH_SIZE = 1
 
 # tags used in Animagine-XL
 SCORE_N = {
-    'very aesthetic':0.71,
-    'aesthetic':0.45,
-    'displeasing':0.27,
-    'very displeasing':-float('inf'),
+    'very aesthetic': 0.71,
+    'aesthetic': 0.45,
+    'displeasing': 0.27,
+    'very displeasing': -float('inf'),
 }
 
-def get_aesthetic_tag(score:float):
+def get_aesthetic_tag(score: float):
     for k, v in SCORE_N.items():
         if score > v:
             return k
 
-class AestheticShadowV2(Tagger):
+class AestheticShadow(Tagger):
     def load(self):
-        self.pipe_aesthetic = pipeline("image-classification", "shadowlilac/aesthetic-shadow-v2", device=devices.device, batch_size=BATCH_SIZE)
-    
+        self.pipe_aesthetic = pipeline("image-classification", "shadowlilac/aesthetic-shadow", device=devices.device, batch_size=BATCH_SIZE)
+
     def unload(self):
         if not settings.current.interrogator_keep_in_memory:
             self.pipe_aesthetic = None
@@ -53,7 +53,7 @@ class AestheticShadowV2(Tagger):
     def predict(self, image: Image.Image, threshold=None):
         data = self.pipe_aesthetic(image)
         return self._get_score(data)
-    
+
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
             return
