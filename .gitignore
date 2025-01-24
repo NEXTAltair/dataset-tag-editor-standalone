@@ -8,3 +8,4 @@ models/
 config.json
 settings.json
 launch_user.bat
+.coverage
