@@ -38,13 +38,17 @@ class CafeAIAesthetic(Tagger):
 
     def predict(self, image: Image.Image, threshold=None):
         data = self.pipe_aesthetic(image, top_k=2)
+        if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+            return data
         return self._get_score(data)
-    
+
     # Not neccesary method, just for a little efficient inference
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
             return
         for out in self.pipe_aesthetic(data, batch_size=BATCH_SIZE):
+            if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+                yield out
             yield self._get_score(out)
 
     def name(self):

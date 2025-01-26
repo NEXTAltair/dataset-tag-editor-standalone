@@ -63,11 +63,19 @@ class WaifuAesthetic(Tagger):
     def stop(self):
         self.unload()
 
+    def _get_score(self, data):
+        """モデルの生出力をタグ形式に変換"""
+        # 実装例：スコアに基づいてタグを生成
+        score = data[0]['score']
+        return [f"[WAIFU]score_{score:.2f}"]
+
     def predict(self, image: Image.Image, threshold=None):
         image_embeds = image_embeddings(image, self.clip_model, self.clip_processor)
         prediction:torch.Tensor = self.model(torch.from_numpy(image_embeds).float().to(devices.device))
         # edit here to change tag
-        return [f"[WD]score_{math.floor(prediction.item()*10)}"]
+        if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+            return prediction
+        return self._get_score(prediction)
 
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
@@ -77,7 +85,9 @@ class WaifuAesthetic(Tagger):
             # 現在のpredictメソッドの処理を流用
             image_embeds = image_embeddings(image, self.clip_model, self.clip_processor)
             prediction = self.model(torch.from_numpy(image_embeds).float().to(devices.device))
-            yield [f"[WD]score_{math.floor(prediction.item()*10)}"]
+            if self._is_wrapper_call():
+                yield prediction
+            yield self._get_score(prediction)
 
     def name(self):
         return "wd aesthetic classifier"

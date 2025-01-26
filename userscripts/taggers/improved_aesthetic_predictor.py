@@ -50,7 +50,7 @@ class ImprovedAestheticPredictor(Tagger):
         self.model = self.model.to(devices.device)
         self.clip_processor = CLIPProcessor.from_pretrained(CLIP_REPOS)
         self.clip_model = CLIPModel.from_pretrained(CLIP_REPOS).to(devices.device).eval()
-    
+
     def unload(self):
         if not settings.current.interrogator_keep_in_memory:
             self.model = None
@@ -69,6 +69,8 @@ class ImprovedAestheticPredictor(Tagger):
         image_embeds = image_embeddings(image, self.clip_model, self.clip_processor)
         prediction:torch.Tensor = self.model(torch.from_numpy(image_embeds).float().to(devices.device))
         # edit here to change tag
+        if self._is_wrapper_call():
+            return prediction
         return [f"[IAP]score_{math.floor(prediction.item())}"]
 
     def name(self):

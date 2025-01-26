@@ -1,6 +1,7 @@
-from typing import Any, Generator, TypedDict
+from typing import TypedDict, NotRequired, Any
+import torch
 
-from PIL import Image
+from PIL.Image import Image
 
 from userscripts.taggers.aesthetic_shadow import AestheticShadow
 from userscripts.taggers.cafeai_aesthetic_classifier import CafeAIAesthetic
@@ -9,18 +10,33 @@ from userscripts.taggers.waifu_aesthetic_classifier import WaifuAesthetic
 
 
 # 予測結果の型定義
-class ImageScore(TypedDict):
+class ScorerPrediction(TypedDict):
     """画像スコアリング結果を表す型
 
     Attributes:
-        image_id: 画像の識別子
-        model_name: 使用したモデルの名前
-        score: 予測スコア（0.0-10.0）
+        raw_output: 生推論結果（各スコアラーの実装に依存）
+        formatted_tags: フォーマット済みタグ
+        success: 推論成功フラグ
+        error: エラーメッセージ（推論失敗時のみ）
+        model: モデル識別子（存在する場合）
     """
-    image_id: str
-    model_name: str
-    score: float
+    raw_output: Any  # 生の予測結果をそのまま保持
+    formatted_tags: list[str]
+    success: bool
+    error: NotRequired[str]
+    model: NotRequired[str]
 
+class BatchScorerOutput(TypedDict):
+    """バッチ処理用出力フォーマット
+
+    Attributes:
+        results: 単一予測結果のリスト
+        batch_success: 全体の成功ステータス
+        batch_error: バッチ全体のエラー
+    """
+    results: list[ScorerPrediction]
+    batch_success: bool
+    batch_error: NotRequired[str]
 
 class ScorerWrapper:
     """画像の審美的スコアリングモデルをラップするクラス
@@ -29,16 +45,18 @@ class ScorerWrapper:
     コンテキストマネージャとしても機能し、リソースの適切な管理を行います。
     """
 
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, batch_size: int = 1):
         """ScorerWrapperを初期化します
 
         Args:
             model_name: 使用するモデルの名前
+            batch_size: バッチ処理時のバッチサイズ（デフォルト: 1）
 
         Raises:
             ValueError: 無効なモデル名が指定された場合
         """
         self.model_name = model_name
+        self.batch_size = batch_size
         self.scorer = self._create_scorer()
         self.scorer.start()
 
@@ -66,6 +84,164 @@ class ScorerWrapper:
                 f"Available models:\n"
                 + "\n".join(f"- {k}: {v}" for k, v in available_models.items())
             )
+
+    def _format_tags(self, raw_output: Any, model_name: str) -> list[str]:
+        """生の予測結果をタグ形式に変換します
+
+        Args:
+            raw_output: スコアラーからの生の予測結果
+            model_name: モデル名（プレフィックスとして使用）
+
+        Returns:
+            list[str]: タグ形式の予測結果
+        """
+        try:
+            # スコアラーに_get_scoreメソッドがある場合はそれを使用
+            if hasattr(self.scorer, '_get_score'):
+                # Tensorの場合、スコアラーが期待する形式に変換
+                if isinstance(raw_output, torch.Tensor):
+                    score = raw_output.item()
+                    raw_output = [{"score": score}]
+                tags = self.scorer._get_score(raw_output)
+                if tags:
+                    return tags if isinstance(tags, list) else [tags]
+
+            # _get_scoreメソッドがない場合はデフォルトのフォーマットを使用
+            if isinstance(raw_output, torch.Tensor):
+                score = raw_output.item()
+            elif isinstance(raw_output, (int, float)):
+                score = float(raw_output)
+            else:
+                # その他の形式の場合はそのまま文字列化
+                return [str(raw_output)]
+
+            # モデル名からプレフィックスを生成
+            prefix = model_name.split('-')[0].upper()
+            return [f"[{prefix}]score_{score:.2f}"]
+        except Exception as e:
+            # エラーが発生した場合は空のリストを返す
+            return []
+
+    def predict(self, image: Image) -> ScorerPrediction:
+        """単一画像の予測を実行します
+
+        Args:
+            image: 入力画像
+
+        Returns:
+            ScorerPrediction: 予測結果
+            例: {
+                "raw_output": ...,  # スコアラーの実装に依存
+                "formatted_tags": [...],  # スコアラーの実装に依存
+                "success": True,
+                "model": "waifu-aesthetic"
+            }
+        """
+        try:
+            # 生データ取得（scorer属性経由）
+            raw = self.scorer.predict(image)
+            # タグ形式に変換
+            formatted_tags = self._format_tags(raw, self.model_name)
+
+            return {
+                "raw_output": raw,  # 生の予測結果をそのまま保持
+                "formatted_tags": formatted_tags,
+                "success": True,
+                "model": getattr(self.scorer, "name", lambda: "unknown")(),
+            }
+        except Exception as e:
+            return {
+                "raw_output": None,
+                "formatted_tags": [],
+                "success": False,
+                "error": str(e),
+                "model": getattr(self.scorer, "name", lambda: "unknown")(),
+            }
+
+    def predict_batch(self, images: list[Image]) -> BatchScorerOutput:
+        """複数の画像に対してバッチ処理でスコアを予測します
+
+        Args:
+            images: 入力画像のリスト
+
+        Returns:
+            BatchScorerOutput: バッチ処理結果
+            例: {
+                "results": [
+                    {
+                        "raw_output": ...,  # スコアラーの実装に依存
+                        "formatted_tags": [...],  # スコアラーの実装に依存
+                        "success": True,
+                        "model": "waifu-aesthetic"
+                    },
+                    ...
+                ],
+                "batch_success": True
+            }
+
+        Raises:
+            AttributeError: バッチ処理に対応していないスコアラーの場合
+        """
+        try:
+            results = []
+            has_error = False
+            error_message = None
+
+            for img in images:
+                try:
+                    result = self.predict(img)
+                    results.append(result)
+                    if not result["success"]:
+                        has_error = True
+                        error_message = result.get("error", "Unknown error")
+                except Exception as e:
+                    has_error = True
+                    error_message = str(e)
+                    results.append({
+                        "raw_output": None,
+                        "formatted_tags": [],
+                        "success": False,
+                        "error": str(e),
+                        "model": getattr(self.scorer, "name", lambda: "unknown")(),
+                    })
+
+            output: BatchScorerOutput = {
+                "results": results,
+                "batch_success": not has_error
+            }
+            if error_message:
+                output["batch_error"] = error_message
+            return output
+
+        except Exception as e:
+            return {
+                "results": [],
+                "batch_success": False,
+                "batch_error": str(e)
+            }
+
+    def get_model_name(self) -> str:
+        """UIに表示するモデル名を取得します
+
+        Returns:
+            str: モデルの表示名
+        """
+        return self.scorer.name()
+
+    def __enter__(self):
+        """コンテキストマネージャのエントリーポイント
+
+        Returns:
+            ScorerWrapper: self
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """コンテキストマネージャの終了処理
+
+        スコアラーのリソースを解放します。
+        """
+        self.scorer.stop()
 
     @staticmethod
     def get_available_models() -> dict[str, str]:
@@ -122,74 +298,3 @@ class ScorerWrapper:
                 models[model_id] = description
 
         return models
-
-    def predict(self, image: Image.Image) -> ImageScore:
-        """画像のスコアを予測します
-
-        Args:
-            image: 入力画像
-
-        Returns:
-            ImageScore: 予測結果を含む辞書
-            {
-                "image_id": str,    # 画像の識別子
-                "model_name": str,  # モデル名
-                "score": float,     # スコア（0.0-10.0）
-            }
-        """
-        return self.scorer.predict(image)
-
-    def predict_batch(
-        self,
-        images: list[Image.Image]
-    ) -> Generator[ImageScore, None, None]:
-        """複数の画像に対してバッチ処理でスコアを予測します
-
-        Args:
-            images: 入力画像のリスト
-
-        Returns:
-            Generator[ImageScore, None, None]:
-            各画像の予測結果を含むジェネレータ。
-            ImageScoreは以下の構造:
-            {
-                "image_id": str,    # 画像の識別子
-                "model_name": str,  # モデル名
-                "score": float,     # スコア（0.0-10.0）
-            }
-
-        Raises:
-            AttributeError: バッチ処理に対応していないスコアラーの場合
-        """
-        # predict_pipeまたはpredict_batchを使用
-        if hasattr(self.scorer, "predict_batch"):
-            return self.scorer.predict_batch(images)
-        elif hasattr(self.scorer, "predict_pipe"):
-            return self.scorer.predict_pipe(images)
-        else:
-            raise AttributeError(
-                f"Scorer {self.model_name} does not support batch processing"
-            )
-
-    def get_model_name(self) -> str:
-        """UIに表示するモデル名を取得します
-
-        Returns:
-            str: モデルの表示名
-        """
-        return self.scorer.name()
-
-    def __enter__(self):
-        """コンテキストマネージャのエントリーポイント
-
-        Returns:
-            ScorerWrapper: self
-        """
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """コンテキストマネージャの終了処理
-
-        スコアラーのリソースを解放します。
-        """
-        self.scorer.stop()

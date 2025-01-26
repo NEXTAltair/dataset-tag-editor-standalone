@@ -81,22 +81,22 @@ class TaggerWrapper:
     """既存タガー実装のラッパー"""
     def __init__(self, model_name: str):
         self.tagger = self._get_tagger(model_name)
-    
+
     def predict(self, image: Image) -> list[str]:
         """
         画像からタグを予測
-        
+
         Args:
             image: 入力画像
         Returns:
             予測されたタグのリスト
         """
         return self.tagger.predict(image)
-    
+
     def batch_predict(self, images: list[Image]) -> list[list[str]]:
         """
         バッチ処理による予測
-        
+
         Args:
             images: 入力画像のリスト
         Returns:
@@ -109,28 +109,56 @@ class ScorerWrapper:
     """既存スコアラー実装のラッパー"""
     def __init__(self, model_name: str):
         self.scorer = self._get_scorer(model_name)
-    
-    def evaluate(self, image: Image) -> float:
+
+    def get_available_models() -> list[dict]:
         """
-        画像を評価
-        
+        登録済みスコアリングモデルのメタデータ一覧を返す
+
+        Returns:
+            [{
+                "name": "表示用モデル名",
+                "version": "モデルバージョン",
+            }]
+        """
+
+    def predict(self, image: Image.Image) -> list[ImageScore]:
+        """画像のスコアを予測します
+
         Args:
             image: 入力画像
+
         Returns:
-            評価スコア
+            list[ImageScore]: 予測結果を含むリスト
+            各ImageScoreは以下の構造:
+            {
+                "image_id": str,    # 画像の識別子
+                "model_name": str,  # モデル名
+                "score": float,     # スコア
+            }
         """
-        return self.scorer.evaluate(image)
-    
-    def batch_evaluate(self, images: list[Image]) -> list[float]:
-        """
-        バッチ処理による評価
-        
+
+    def predict_batch(
+        self,
+        images: list[Image.Image]
+    ) -> Generator[list[ImageScore], None, None]:
+        """複数の画像に対してバッチ処理でスコアを予測します
+
         Args:
             images: 入力画像のリスト
+
         Returns:
-            各画像の評価スコアのリスト
+            Generator[list[ImageScore], None, None]:
+            各画像の予測結果を含むジェネレータ。
+            ImageScoreは以下の構造:
+            {
+                "image_id": str,    # 画像の識別子
+                "model_name": str,  # モデル名
+                "score": float,     # スコア
+            }
+
+        Raises:
+            AttributeError: バッチ処理に対応していないスコアラーの場合
         """
-        return self.scorer.batch_evaluate(images)
 ```
 
 ### 4.2 使用例

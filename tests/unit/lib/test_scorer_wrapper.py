@@ -1,4 +1,5 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 from PIL import Image
 
@@ -91,30 +92,35 @@ class TestScorerWrapper:
 
         期待される動作:
             - 画像が正しくスコアリングされる
-            - スコアが適切な形式で返される
-            - 画像IDが含まれている
-            - スコアが適切な範囲内である
+            - 生データと加工済みデータが適切な形式で返される
+            - 処理成功フラグが含まれる
 
         Args:
             scorer: ScorerWrapperインスタンス（フィクスチャ）
             mock_image: モック化された画像（フィクスチャ）
         """
-        expected_result = {
-            "image_id": "image_0",
-            "model_name": "Test Scorer",
-            "score": 7.0
-        }
+        raw_data = [{'label': 'hq', 'score': 0.92}]
+        formatted_data = ['very aesthetic']
 
-        with patch.object(scorer.scorer, "predict") as mock_predict:
-            mock_predict.return_value = expected_result
+        with patch.object(scorer.scorer, "predict") as mock_predict, \
+             patch.object(scorer.scorer, "_get_score") as mock_get_score, \
+             patch.object(scorer.scorer, "name") as mock_name:
+
+            mock_predict.return_value = raw_data
+            mock_get_score.return_value = formatted_data
+            mock_name.return_value = 'test_model'
+
             result = scorer.predict(mock_image)
 
-            assert isinstance(result, dict)
-            assert set(result.keys()) == {"image_id", "model_name", "score"}
-            assert isinstance(result["score"], float)
-            assert 0.0 <= result["score"] <= 10.0
-            assert result["image_id"] == "image_0"
+            assert result == {
+                'raw_output': raw_data,
+                'formatted_tags': formatted_data,
+                'success': True,
+                'model': 'test_model'
+            }
+
             mock_predict.assert_called_once_with(mock_image)
+            mock_get_score.assert_called_once_with(raw_data)
 
     def test_predict_batch(self, scorer):
         """バッチ処理でのスコア予測テスト
@@ -122,29 +128,53 @@ class TestScorerWrapper:
         期待される動作:
             - 複数画像が一括でスコアリングされる
             - 各画像のスコアが適切な形式で返される
-            - 画像IDが正しく含まれている
-            - スコアが適切な範囲内である
+            - バッチ処理の成功フラグが含まれる
+            - 各予測結果が適切な形式である
 
         Args:
             scorer: ScorerWrapperインスタンス（フィクスチャ）
         """
-        mock_images = [MagicMock(spec=Image.Image) for _ in range(3)]
-        expected_scores = [
-            {"image_id": f"image_{i}", "model_name": "Test Scorer", "score": float(i + 6)}
-            for i in range(3)
+        test_images = [
+            Image.new('RGB', (256, 256)),
+            Image.new('RGB', (256, 256)),
+            Image.new('RGB', (256, 256))
         ]
 
-        with patch.object(scorer.scorer, "predict_pipe") as mock_predict_pipe:
-            mock_predict_pipe.return_value = iter(expected_scores)
-            results = list(scorer.predict_batch(mock_images))
+        raw_data = [{'label': 'hq', 'score': 0.92}]
+        formatted_data = ['very aesthetic']
 
-            assert len(results) == len(mock_images)
-            for i, result in enumerate(results):
-                assert isinstance(result, dict)
-                assert set(result.keys()) == {"image_id", "model_name", "score"}
-                assert result["image_id"] == f"image_{i}"
-                assert isinstance(result["score"], float)
-                assert 0.0 <= result["score"] <= 10.0
+        with patch.object(scorer.scorer, "predict") as mock_predict, \
+             patch.object(scorer.scorer, "_get_score") as mock_get_score, \
+             patch.object(scorer.scorer, "name") as mock_name:
+
+            mock_predict.return_value = raw_data
+            mock_get_score.return_value = formatted_data
+            mock_name.return_value = 'test_model'
+
+            result = scorer.predict_batch(test_images)
+
+            # 基本的な構造の検証
+            assert isinstance(result, dict)
+            assert "results" in result
+            assert "batch_success" in result
+            assert result["batch_success"] is True
+            assert len(result["results"]) == len(test_images)
+
+            # 各予測結果の検証
+            for prediction in result["results"]:
+                assert isinstance(prediction, dict)
+                assert "raw_output" in prediction
+                assert "formatted_tags" in prediction
+                assert "success" in prediction
+                assert "model" in prediction
+                assert prediction["success"] is True
+                assert prediction["model"] == "test_model"
+                assert prediction["raw_output"] == raw_data
+                assert prediction["formatted_tags"] == formatted_data
+
+            # モックの呼び出し回数を検証
+            assert mock_predict.call_count == len(test_images)
+            assert mock_get_score.call_count == len(test_images)
 
     def test_context_manager(self, scorer):
         """コンテキストマネージャ機能のテスト

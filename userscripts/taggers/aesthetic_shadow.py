@@ -52,13 +52,19 @@ class AestheticShadow(Tagger):
 
     def predict(self, image: Image.Image, threshold=None):
         data = self.pipe_aesthetic(image)
-        return self._get_score(data)
+
+        if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+            return data
+        return self._get_score(data)  # 元の処理
 
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
             return
         for out in self.pipe_aesthetic(data, batch_size=BATCH_SIZE):
-            yield self._get_score(out)
+            if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+                yield out
+            else:
+                yield self._get_score(out)  # 元の処理
 
     def name(self):
         return "aesthetic shadow"
