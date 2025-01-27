@@ -1,6 +1,6 @@
-# This code is using the image classification "aesthetic-shadow-v2" by shadowlilac (https://huggingface.co/shadowlilac/aesthetic-shadow-v2)
-# and "aesthetic-shadow-v2" is licensed under CC-BY-NC 4.0 (https://spdx.org/licenses/CC-BY-NC-4.0)
-# 配布元公開停止に伴い、手持ちのModelミラー(https://huggingface.co/NEXTAltair/cache_aestheic-shadow-v2)したものに移行しました。
+# This code is using the image classification "aesthetic-shadow" by shadowlilac (https://huggingface.co/shadowlilac/aesthetic-shadow)
+# and "aesthetic-shadow" is licensed under CC-BY-NC 4.0 (https://spdx.org/licenses/CC-BY-NC-4.0)
+# v2配布元公開停止に伴い、v1を使用する
 
 from PIL import Image
 from transformers import pipeline
@@ -14,6 +14,7 @@ from scripts.tagger import Tagger
 BATCH_SIZE = 1
 
 # tags used in Animagine-XL
+# TODO: Animation-XLはv2のスコア基準なので値が異なる
 SCORE_N = {
     'very aesthetic': 0.71,
     'aesthetic': 0.45,
@@ -26,9 +27,9 @@ def get_aesthetic_tag(score: float):
         if score > v:
             return k
 
-class AestheticShadowV2(Tagger):
+class AestheticShadow(Tagger):
     def load(self):
-        self.pipe_aesthetic = pipeline("image-classification", "NEXTAltair/cache_aestheic-shadow-v2", device=devices.device, batch_size=BATCH_SIZE)
+        self.pipe_aesthetic = pipeline("image-classification", "shadowlilac/aesthetic-shadow", device=devices.device, batch_size=BATCH_SIZE)
 
     def unload(self):
         if not settings.current.interrogator_keep_in_memory:
@@ -52,7 +53,7 @@ class AestheticShadowV2(Tagger):
     def predict(self, image: Image.Image, threshold=None):
         data = self.pipe_aesthetic(image)
         return self._get_score(data)
-    
+
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
             return
@@ -60,4 +61,4 @@ class AestheticShadowV2(Tagger):
             yield self._get_score(out)
 
     def name(self):
-        return "aesthetic shadow v2"
+        return "aesthetic shadow v1"
