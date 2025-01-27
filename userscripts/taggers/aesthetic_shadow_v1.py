@@ -25,7 +25,7 @@ SCORE_N = {
 def get_aesthetic_tag(score: float):
     for k, v in SCORE_N.items():
         if score > v:
-            return k
+            return f"v1_{k}"
 
 class AestheticShadow(Tagger):
     def load(self):
