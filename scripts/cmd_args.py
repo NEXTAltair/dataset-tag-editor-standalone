@@ -14,11 +14,6 @@ parser.add_argument(
     default=False,
 )
 parser.add_argument(
-    "--localization",
-    type=str,
-    default=None
-)
-parser.add_argument(
     "--port", type=int, help="Launch gradio with given port number", default=None
 )
 parser.add_argument(
