@@ -85,43 +85,6 @@ class ScorerWrapper:
                 + "\n".join(f"- {k}: {v}" for k, v in available_models.items())
             )
 
-    def _format_tags(self, raw_output: Any, model_name: str) -> list[str]:
-        """生の予測結果をタグ形式に変換します
-
-        Args:
-            raw_output: スコアラーからの生の予測結果
-            model_name: モデル名（プレフィックスとして使用）
-
-        Returns:
-            list[str]: タグ形式の予測結果
-        """
-        try:
-            # スコアラーに_get_scoreメソッドがある場合はそれを使用
-            if hasattr(self.scorer, '_get_score'):
-                # Tensorの場合、スコアラーが期待する形式に変換
-                if isinstance(raw_output, torch.Tensor):
-                    score = raw_output.item()
-                    raw_output = [{"score": score}]
-                tags = self.scorer._get_score(raw_output)
-                if tags:
-                    return tags if isinstance(tags, list) else [tags]
-
-            # _get_scoreメソッドがない場合はデフォルトのフォーマットを使用
-            if isinstance(raw_output, torch.Tensor):
-                score = raw_output.item()
-            elif isinstance(raw_output, (int, float)):
-                score = float(raw_output)
-            else:
-                # その他の形式の場合はそのまま文字列化
-                return [str(raw_output)]
-
-            # モデル名からプレフィックスを生成
-            prefix = model_name.split('-')[0].upper()
-            return [f"[{prefix}]score_{score:.2f}"]
-        except Exception as e:
-            # エラーが発生した場合は空のリストを返す
-            return []
-
     def predict(self, image: Image) -> ScorerPrediction:
         """単一画像の予測を実行します
 
@@ -139,13 +102,11 @@ class ScorerWrapper:
         """
         try:
             # 生データ取得（scorer属性経由）
-            raw = self.scorer.predict(image)
-            # タグ形式に変換
-            formatted_tags = self._format_tags(raw, self.model_name)
+            raw, score_tag = self.scorer.predict(image)
 
             return {
                 "raw_output": raw,  # 生の予測結果をそのまま保持
-                "formatted_tags": formatted_tags,
+                "formatted_tags": score_tag,
                 "success": True,
                 "model": getattr(self.scorer, "name", lambda: "unknown")(),
             }

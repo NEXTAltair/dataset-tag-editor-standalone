@@ -88,7 +88,7 @@ class TestScorerPipeline:
     ])
     def test_scorer_pipeline(self, model_name: str, sample_image, sample_images):
         """スコアリングパイプラインの総合テスト
-        
+
         以下の機能を検証します：
         1. 単一画像の予測
         2. バッチ予測
@@ -101,7 +101,7 @@ class TestScorerPipeline:
             # 予測実行
             prediction = scorer.predict(sample_image)
             self._validate_prediction(prediction)
-            
+
             # モデル名取得テスト
             model_name_display = scorer.get_model_name()
             assert isinstance(model_name_display, str), "モデル名は文字列である必要があります"
@@ -111,14 +111,14 @@ class TestScorerPipeline:
         with ScorerWrapper(model_name, batch_size=2) as scorer:
             try:
                 batch_result = scorer.predict_batch(sample_images)
-                
+
                 # バッチ結果の基本検証
                 assert isinstance(batch_result, dict), "バッチ結果は辞書形式である必要があります"
                 assert 'results' in batch_result, "resultsキーが必要です"
                 assert 'batch_success' in batch_result, "batch_successキーが必要です"
                 assert isinstance(batch_result['results'], list), "resultsはリストである必要があります"
                 assert len(batch_result['results']) == len(sample_images), "結果の数が画像数と一致しません"
-                
+
                 # 個々の予測結果検証
                 for result in batch_result['results']:
                     self._validate_prediction(result)
@@ -133,12 +133,12 @@ class TestScorerPipeline:
             prediction = scorer.predict(sample_image)
             self._validate_prediction(prediction)
             scorer.scorer.stop()
-            
+
             # コンテキストマネージャテスト
             with ScorerWrapper(model_name) as managed_scorer:
                 managed_prediction = managed_scorer.predict(sample_image)
                 self._validate_prediction(managed_prediction)
-            
+
             # リソース解放確認
             assert not hasattr(managed_scorer.scorer, 'model') or managed_scorer.scorer.model is None, "リソースが適切に解放されていません"
 
@@ -151,7 +151,7 @@ class TestScorerPipeline:
         invalid_model = "non-existent-model"
         with pytest.raises(ValueError) as exc_info:
             ScorerWrapper(invalid_model)
-            
+
         error_msg = str(exc_info.value)
         assert invalid_model in error_msg, "エラーメッセージにモデル名が含まれていません"
         assert "Available models" in error_msg, "利用可能モデル一覧が表示されていません"
