@@ -172,3 +172,48 @@ class TestTaggerWrapper:
             assert isinstance(name, str)
             assert name == "MockTagger"
             mock_tagger.name.assert_called_once()
+
+    def test_get_available_models(self):
+        """使用可能なモデル一覧取得テスト
+
+        期待される動作:
+            - 使用可能なモデル名とその説明が辞書形式で取得できる
+            - 全ての主要なモデルタイプが含まれている
+            - カスタムモデルも含まれている
+        """
+        models = TaggerWrapper.get_available_models()
+        
+        # 基本的な型チェック
+        assert isinstance(models, dict)
+        assert all(isinstance(desc, str) for desc in models.values())
+        
+        # ビルトインモデル - 画像タグ付け
+        assert "waifu-diffusion-*" in models
+        assert "waifu-diffusion-*-timm" in models
+        assert "deep-danbooru" in models
+        assert "z3d-e621" in models
+        
+        # ビルトインモデル - 説明文生成
+        assert "blip" in models
+        assert "blip2-*" in models
+        assert "git-large" in models
+        
+        # 説明文に具体的な情報が含まれていることを確認
+        assert any("SmilingWolf" in desc for desc in models.values())
+        assert any("Salesforce" in desc for desc in models.values())
+        assert not any("美的評価" in desc for desc in models.values())  # 美的評価はScorerWrapperに移動
+
+    def test_init_with_invalid_model_shows_available_models(self):
+        """無効なモデル名での初期化時に利用可能なモデル一覧を表示するテスト
+
+        期待される動作:
+            - 存在しないモデル名を指定した場合、ValueError例外が発生する
+            - エラーメッセージに利用可能なモデル一覧が含まれる
+        """
+        with pytest.raises(ValueError) as exc_info:
+            TaggerWrapper("non-existent-model")
+        
+        error_message = str(exc_info.value)
+        assert "Unknown model name: non-existent-model" in error_message
+        assert "Available models:" in error_message
+        assert "waifu-diffusion-*" in error_message
