@@ -1,25 +1,26 @@
-from collections import namedtuple
 import mimetypes
 import os
-from pathlib import Path
 import signal
 import sys
-import time
 import tempfile
+import time
+from collections import namedtuple
+from pathlib import Path
 
-from PIL import PngImagePlugin, Image
-
+import cmd_args
 import gradio as gr
 import gradio.routes
 import gradio.utils
-
-from dte_instance import dte_instance
-
-import tab_main, tab_settings, cmd_args, utilities, logger, launch, settings
+import launch
+import logger
 import paths
+import settings
+import tab_main
+import tab_settings
+import utilities
+from dte_instance import dte_instance
+from PIL import Image, PngImagePlugin
 from shared_state import state
-
-import gr_hijack
 
 # ================================================================
 # brought from AUTOMATIC1111/stable-diffusion-webui and modified
@@ -56,7 +57,7 @@ def save_pil_to_cache(pil_image: Image.Image, *args, **kwargs):
     if already_saved_as and os.path.isfile(already_saved_as):
         register_tmp_file(interface, already_saved_as)
         return str(Path(already_saved_as).resolve())
-    
+
     tmpdir = state.temp_dir
     use_metadata = False
     metadata = PngImagePlugin.PngInfo()
@@ -74,7 +75,7 @@ def save_pil_to_cache(pil_image: Image.Image, *args, **kwargs):
     pil_image.save(file_obj, pnginfo=(metadata if use_metadata else None))
 
     pil_image.already_saved_as = file_obj.name
-    
+
     return file_obj.name
 
 
@@ -86,12 +87,14 @@ def save_file_to_cache_cacheonce(file_path: str | Path, cache_dir: str) -> str:
     """Returns a temporary file path for a copy of the given file path if it does
     not already exist. Otherwise returns the path to the existing temp file."""
     import hashlib
+
     filename = hashlib.md5(file_path.encode()).hexdigest()
     temp_dir = Path(cache_dir)
     temp_dir.mkdir(exist_ok=True, parents=True)
-    
-    from gradio_client import utils as client_utils
+
     import shutil
+
+    from gradio_client import utils as client_utils
 
     filename = client_utils.strip_invalid_filename_characters(filename)
     full_temp_file_path = str(Path(temp_dir / filename).resolve())
@@ -106,9 +109,13 @@ def webpath(fn: Path):
     path = str(fn.absolute()).replace("\\", "/")
     return f"file={path}?{os.path.getmtime(fn)}"
 
+
 def read_localization():
-    with open(utilities.base_dir_path() / "javascript" / "zh-Hans.json", "r", encoding="utf-8") as f:
+    with open(
+        utilities.base_dir_path() / "javascript" / "zh-Hans.json", "r", encoding="utf-8"
+    ) as f:
         return f.read()
+
 
 def javascript_html():
     head = ""
@@ -116,23 +123,35 @@ def javascript_html():
         head += f'<script type="text/javascript">var localization = {read_localization()}</script>\n'
 
     js_path = utilities.base_dir_path() / "javascript"
+    logger.write(f"Looking for JavaScript files in: {js_path.absolute()}")
+    logger.write(f"Directory exists: {js_path.exists()}")
 
-    for p in sorted(js_path.glob("*.js")):
-        if not p.is_file():
-            continue
-        head += f'<script type="text/javascript" src="{webpath(p)}"></script>\n'
+    if js_path.exists():
+        for p in js_path.glob("*.js"):
+            logger.write(f"Found JS file: {p.absolute()}")
+            if p.is_file():
+                wp = webpath(p)
+                if wp:
+                    head += f'<script type="text/javascript" src="{wp}"></script>\n'
+                    logger.write(f"Added JS file to head: {p.name}")
 
     return head
 
 
 def css_html():
-    css_path = utilities.base_dir_path() / "css"
     head = ""
+    css_path = utilities.base_dir_path() / "css"
+    logger.write(f"Looking for CSS files in: {css_path.absolute()}")
+    logger.write(f"Directory exists: {css_path.exists()}")
 
-    for p in sorted(css_path.glob("*.css")):
-        if not p.is_file():
-            continue
-        head += f'<link rel="stylesheet" property="stylesheet" href="{webpath(p)}">'
+    if css_path.exists():
+        for p in css_path.glob("*.css"):
+            logger.write(f"Found CSS file: {p.absolute()}")
+            if p.is_file():
+                wp = webpath(p)
+                if wp:
+                    head += f'<link rel="stylesheet" property="stylesheet" href="{wp}">'
+                    logger.write(f"Added CSS file to head: {p.name}")
 
     return head
 
@@ -233,7 +252,7 @@ def main():
         if settings.current.use_temp_files and settings.current.temp_directory != "":
             state.temp_dir = Path(settings.current.temp_directory)
 
-        os.environ['GRADIO_TEMP_DIR'] = state.temp_dir.name
+        os.environ["GRADIO_TEMP_DIR"] = state.temp_dir.name
 
         # override save function to prevent from making anonying temporaly files
         gr.gradio.processing_utils.save_pil_to_cache = save_pil_to_cache
@@ -250,18 +269,20 @@ def main():
 
         interface = create_ui().queue(64)
 
-        # Always allow current directory and base directory
-        allowed_paths = [str(Path('.').absolute()), utilities.base_dir_path()]
+        # Always allow project root directory
+        project_root = utilities.base_dir_path()
+        allowed_paths = [str(project_root)]
         if settings.current.allowed_paths:
-            allowed_paths.extend([str(Path(path).absolute()) for path in settings.current.allowed_paths.split(', ')])
-
-        # Use default values only if command line arguments are not specified
-        server_name = cmd_args.opts.server_name if cmd_args.opts.server_name is not None else "0.0.0.0"
-        server_port = cmd_args.opts.port if cmd_args.opts.port is not None else 7860
+            allowed_paths.extend(
+                [
+                    str(Path(path).absolute())
+                    for path in settings.current.allowed_paths.split(", ")
+                ]
+            )
 
         app, _, _ = interface.launch(
-            server_port=server_port,
-            server_name=server_name,
+            server_port=cmd_args.opts.port,
+            server_name=cmd_args.opts.server_name,
             share=cmd_args.opts.share,
             auth=[tuple(cred.split(":")) for cred in cmd_args.opts.auth]
             if cmd_args.opts.auth
@@ -270,9 +291,7 @@ def main():
             ssl_certfile=cmd_args.opts.tls_cert,
             debug=cmd_args.opts.gradio_debug,
             prevent_thread_lock=True,
-            allowed_paths=allowed_paths,
-            quiet=True,
-            root_path=cmd_args.opts.root_path,
+            allowed_paths=allowed_paths
         )
 
         # Disable a very open middleware as Stable Diffusion web UI does
