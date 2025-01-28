@@ -10,7 +10,6 @@ import traceback
 from multiprocessing import Pool
 
 from tqdm import tqdm
-
 from singleton import Singleton
 import settings, logger, utilities
 from paths import paths
@@ -246,7 +245,10 @@ class DatasetTagEditor(Singleton):
 
         img_paths = sorted(filtered_set.datas.keys())
 
-        return [self.images.get(path) for path in img_paths]
+        if settings.current.max_resolution > 0:
+            return [self.images.get(path) for path in img_paths]
+        else:
+            return img_paths
 
     def get_filtered_imgindices(self, filters: list[filters.Filter] = []):
         filtered_set = self.dataset.copy()
@@ -336,8 +338,8 @@ class DatasetTagEditor(Singleton):
         prepend: bool = False,
     ):
         img_paths = self.get_filtered_imgpaths(filters=filters)
-        tags_to_append = replace_tags[len(search_tags) :]
-        tags_to_remove = search_tags[len(replace_tags) :]
+        tags_to_append = replace_tags[len(search_tags):]
+        tags_to_remove = search_tags[len(replace_tags):]
         tags_to_replace = {}
         for i in range(min(len(search_tags), len(replace_tags))):
             if replace_tags[i] is None or replace_tags[i] == "":
@@ -366,7 +368,7 @@ class DatasetTagEditor(Singleton):
     def get_replaced_tagset(
         self, tags: set[str], search_tags: list[str], replace_tags: list[str]
     ):
-        tags_to_remove = search_tags[len(replace_tags) :]
+        tags_to_remove = search_tags[len(replace_tags):]
         tags_to_replace = {}
         for i in range(min(len(search_tags), len(replace_tags))):
             if replace_tags[i] is None or replace_tags[i] == "":
@@ -685,8 +687,8 @@ class DatasetTagEditor(Singleton):
         threshold_waifu: float,
         threshold_z3d: float,
         use_temp_dir: bool,
-        kohya_json_path: Optional[str], 
-        max_res:float
+        kohya_json_path: Optional[str],
+        max_res: float
     ):
         import time
         if opts.profile:

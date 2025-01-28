@@ -19,6 +19,7 @@ import tab_main, tab_settings, cmd_args, utilities, logger, launch, settings
 import paths
 from shared_state import state
 
+import gr_hijack
 
 # ================================================================
 # brought from AUTOMATIC1111/stable-diffusion-webui and modified
@@ -105,10 +106,17 @@ def webpath(fn: Path):
     path = str(fn.absolute()).replace("\\", "/")
     return f"file={path}?{os.path.getmtime(fn)}"
 
+def read_localization():
+    with open(utilities.base_dir_path() / "javascript" / "zh-Hans.json", "r", encoding="utf-8") as f:
+        return f.read()
 
 def javascript_html():
-    js_path = utilities.base_dir_path() / "javascript"
     head = ""
+    if cmd_args.opts.localization == "zh-Hans":
+        head += f'<script type="text/javascript">var localization = {read_localization()}</script>\n'
+
+    js_path = utilities.base_dir_path() / "javascript"
+
     for p in sorted(js_path.glob("*.js")):
         if not p.is_file():
             continue
@@ -160,7 +168,7 @@ def commit_hash():
 
 
 def versions_html():
-    import torch
+    # import torch
 
     python_version = ".".join([str(x) for x in sys.version_info[0:3]])
     commit = commit_hash()
@@ -168,8 +176,6 @@ def versions_html():
 
     return f"""
 python: <span title="{sys.version}">{python_version}</span>
- • 
-torch: {getattr(torch, '__long_version__',torch.__version__)}
  • 
 gradio: {gr.__version__}
  • 
@@ -213,7 +219,6 @@ def main():
     global interface
 
     def sigint_handler(sig, frame):
-        print(f"Interrupted with signal {sig} in {frame}")
         os._exit(0)
 
     signal.signal(signal.SIGINT, sigint_handler)
@@ -259,6 +264,8 @@ def main():
             debug=cmd_args.opts.gradio_debug,
             prevent_thread_lock=True,
             allowed_paths=allowed_paths
+            quiet=True,
+            root_path=cmd_args.opts.root_path
         )
 
         # Disable a very open middleware as Stable Diffusion web UI does
