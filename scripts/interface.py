@@ -176,9 +176,9 @@ def versions_html():
 
     return f"""
 python: <span title="{sys.version}">{python_version}</span>
- • 
+ ･
 gradio: {gr.__version__}
- • 
+ ･
 commit: <a href="https://github.com/toshiaki1729/dataset-tag-editor-standalone/commit/{commit}">{short_commit}</a>
 """
 
@@ -225,16 +225,16 @@ def main():
 
     while True:
         state.begin()
-        
+
         settings.load()
         paths.paths = paths.Paths()
 
         state.temp_dir = (utilities.base_dir_path() / "temp").absolute()
         if settings.current.use_temp_files and settings.current.temp_directory != "":
             state.temp_dir = Path(settings.current.temp_directory)
-        
+
         os.environ['GRADIO_TEMP_DIR'] = state.temp_dir.name
-        
+
         # override save function to prevent from making anonying temporaly files
         gr.gradio.processing_utils.save_pil_to_cache = save_pil_to_cache
 
@@ -250,11 +250,18 @@ def main():
 
         interface = create_ui().queue(64)
 
-        allowed_paths = settings.current.allowed_paths.split(', ')
-        allowed_paths = [str(Path(path).absolute()) for path in allowed_paths] + [utilities.base_dir_path()]
+        # Always allow current directory and base directory
+        allowed_paths = [str(Path('.').absolute()), utilities.base_dir_path()]
+        if settings.current.allowed_paths:
+            allowed_paths.extend([str(Path(path).absolute()) for path in settings.current.allowed_paths.split(', ')])
+
+        # Use default values only if command line arguments are not specified
+        server_name = cmd_args.opts.server_name if cmd_args.opts.server_name is not None else "0.0.0.0"
+        server_port = cmd_args.opts.port if cmd_args.opts.port is not None else 7860
+
         app, _, _ = interface.launch(
-            server_port=cmd_args.opts.port,
-            server_name=cmd_args.opts.server_name,
+            server_port=server_port,
+            server_name=server_name,
             share=cmd_args.opts.share,
             auth=[tuple(cred.split(":")) for cred in cmd_args.opts.auth]
             if cmd_args.opts.auth
@@ -263,9 +270,9 @@ def main():
             ssl_certfile=cmd_args.opts.tls_cert,
             debug=cmd_args.opts.gradio_debug,
             prevent_thread_lock=True,
-            allowed_paths=allowed_paths
+            allowed_paths=allowed_paths,
             quiet=True,
-            root_path=cmd_args.opts.root_path
+            root_path=cmd_args.opts.root_path,
         )
 
         # Disable a very open middleware as Stable Diffusion web UI does

@@ -1,4 +1,4 @@
-gradio==4.28.3
+gradio
 transformers>=4.27.4
 requests
 pillow
@@ -8,4 +8,3 @@ torchvision
 tqdm
 timm>=1.0.8
 print-color
-fastapi==0.112.4
