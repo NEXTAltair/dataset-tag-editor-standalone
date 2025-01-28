@@ -24,7 +24,7 @@ SCORE_N = {
 def get_aesthetic_tag(score: float):
     for k, v in SCORE_N.items():
         if score > v:
-            return k
+            return f"v2_{k}"
 
 class AestheticShadowV2(Tagger):
     def load(self):
@@ -51,12 +51,16 @@ class AestheticShadowV2(Tagger):
 
     def predict(self, image: Image.Image, threshold=None):
         data = self.pipe_aesthetic(image)
+        if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+            return (data, self._get_score(data))
         return self._get_score(data)
 
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
             return
         for out in self.pipe_aesthetic(data, batch_size=BATCH_SIZE):
+            if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+                yield (out, self._get_score(out))
             yield self._get_score(out)
 
     def name(self):

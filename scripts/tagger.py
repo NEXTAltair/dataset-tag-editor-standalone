@@ -22,7 +22,7 @@ class Tagger:
     # predict tags of one image
     def predict(self, image: Image.Image, threshold: Optional[float] = None) -> list[str]:
         raise NotImplementedError()
-    
+
     # Please implement if you want to use more efficient data loading system
     # None input will come to check if this function is implemented
     def predict_pipe(self, data: list[Image.Image], threshold: Optional[float] = None) -> Generator[list[str], Any, None]:
@@ -32,6 +32,15 @@ class Tagger:
     def name(self):
         raise NotImplementedError()
 
+    def _is_wrapper_call(self) -> bool:
+        """呼び出し元がlib..Wrapperかどうかを判定する
+
+        Returns:
+            bool: Wrapper経由の呼び出しの場合True
+        """
+        import inspect
+        caller_frame = inspect.currentframe().f_back.f_back  # predictメソッドの呼び出し元を取得
+        return 'wrapper.py' in caller_frame.f_code.co_filename
 
 def get_replaced_tag(tag: str):
     use_spaces = settings.current.tagger_use_spaces
