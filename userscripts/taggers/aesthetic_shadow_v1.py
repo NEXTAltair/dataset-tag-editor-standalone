@@ -1,4 +1,6 @@
-import math
+# This code is using the image classification "aesthetic-shadow" by shadowlilac (https://huggingface.co/shadowlilac/aesthetic-shadow)
+# and "aesthetic-shadow" is licensed under CC-BY-NC 4.0 (https://spdx.org/licenses/CC-BY-NC-4.0)
+# v2配布元公開停止に伴い、v1を使用する
 
 from PIL import Image
 from transformers import pipeline
@@ -9,11 +11,25 @@ from scripts.tagger import Tagger
 # brought and modified from https://huggingface.co/spaces/cafeai/cafe_aesthetic_demo/blob/main/app.py
 
 # I'm not sure if this is really working
-BATCH_SIZE = 32
+BATCH_SIZE = 1
 
-class CafeAIAesthetic(Tagger):
+# tags used in Animagine-XL
+# TODO: Animation-XLはv2のスコア基準なので値が異なる
+SCORE_N = {
+    'very aesthetic': 0.71,
+    'aesthetic': 0.45,
+    'displeasing': 0.27,
+    'very displeasing': -float('inf'),
+}
+
+def get_aesthetic_tag(score: float):
+    for k, v in SCORE_N.items():
+        if score > v:
+            return f"v1_{k}"
+
+class AestheticShadow(Tagger):
     def load(self):
-        self.pipe_aesthetic = pipeline("image-classification", "cafeai/cafe_aesthetic", device=devices.device, batch_size=BATCH_SIZE)
+        self.pipe_aesthetic = pipeline("image-classification", "shadowlilac/aesthetic-shadow", device=devices.device, batch_size=BATCH_SIZE)
 
     def unload(self):
         if not settings.current.interrogator_keep_in_memory:
@@ -31,18 +47,15 @@ class CafeAIAesthetic(Tagger):
         final = {}
         for d in data:
             final[d["label"]] = d["score"]
-        ae = final['aesthetic']
-
-        # edit here to change tag
-        return [f"[CAFE]score_{math.floor(ae*10)}"]
+        hq = final['hq']
+        return [get_aesthetic_tag(hq)]
 
     def predict(self, image: Image.Image, threshold=None):
-        data = self.pipe_aesthetic(image, top_k=2)
+        data = self.pipe_aesthetic(image)
         if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
             return (data, self._get_score(data))
         return self._get_score(data)
 
-    # Not neccesary method, just for a little efficient inference
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
             return
@@ -52,4 +65,4 @@ class CafeAIAesthetic(Tagger):
             yield self._get_score(out)
 
     def name(self):
-        return "cafeai aesthetic classifier"
+        return "aesthetic shadow v1"

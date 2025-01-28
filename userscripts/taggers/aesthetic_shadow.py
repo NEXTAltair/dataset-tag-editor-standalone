@@ -1,7 +1,6 @@
-# This code is using the image classification "aesthetic-shadow" by shadowlilac (https://huggingface.co/shadowlilac/aesthetic-shadow)
-# and "aesthetic-shadow" is licensed under CC-BY-NC 4.0 (https://spdx.org/licenses/CC-BY-NC-4.0)
-
-import math
+# This code is using the image classification "aesthetic-shadow-v2" by shadowlilac (https://huggingface.co/shadowlilac/aesthetic-shadow-v2)
+# and "aesthetic-shadow-v2" is licensed under CC-BY-NC 4.0 (https://spdx.org/licenses/CC-BY-NC-4.0)
+# 配布元公開停止に伴い、手持ちのModelミラー(https://huggingface.co/NEXTAltair/cache_aestheic-shadow-v2)したものに移行しました。
 
 from PIL import Image
 from transformers import pipeline
@@ -25,11 +24,11 @@ SCORE_N = {
 def get_aesthetic_tag(score: float):
     for k, v in SCORE_N.items():
         if score > v:
-            return k
+            return f"v2_{k}"
 
 class AestheticShadow(Tagger):
     def load(self):
-        self.pipe_aesthetic = pipeline("image-classification", "shadowlilac/aesthetic-shadow", device=devices.device, batch_size=BATCH_SIZE)
+        self.pipe_aesthetic = pipeline("image-classification", "NEXTAltair/cache_aestheic-shadow-v2", device=devices.device, batch_size=BATCH_SIZE)
 
     def unload(self):
         if not settings.current.interrogator_keep_in_memory:
@@ -52,19 +51,17 @@ class AestheticShadow(Tagger):
 
     def predict(self, image: Image.Image, threshold=None):
         data = self.pipe_aesthetic(image)
-
         if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
-            return data
-        return self._get_score(data)  # 元の処理
+            return (data, self._get_score(data))
+        return self._get_score(data)
 
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
             return
         for out in self.pipe_aesthetic(data, batch_size=BATCH_SIZE):
             if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
-                yield out
-            else:
-                yield self._get_score(out)  # 元の処理
+                yield (out, self._get_score(out))
+            yield self._get_score(out)
 
     def name(self):
-        return "aesthetic shadow"
+        return "aesthetic shadow v2"
