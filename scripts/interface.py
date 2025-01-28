@@ -248,19 +248,20 @@ def main():
         settings.load()
         paths.paths = paths.Paths()
 
-        state.temp_dir = (utilities.base_dir_path() / "temp").absolute()
-        if settings.current.use_temp_files and settings.current.temp_directory != "":
-            state.temp_dir = Path(settings.current.temp_directory)
-
-        os.environ["GRADIO_TEMP_DIR"] = state.temp_dir.name
-
-        # override save function to prevent from making anonying temporaly files
-        gr.gradio.processing_utils.save_pil_to_cache = save_pil_to_cache
-
         if settings.current.use_temp_files:
-            gr.gradio.processing_utils.save_file_to_cache = save_file_to_cache_cacheonce
+            state.temp_dir = Path(
+                settings.current.temp_directory or utilities.base_dir_path() / "temp"
+            ).absolute()
+            os.environ["GRADIO_TEMP_DIR"] = str(state.temp_dir)
         else:
-            gr.gradio.processing_utils.save_file_to_cache = save_file_to_cache_nocache
+            state.temp_dir = None
+            # PILのキャッシュを元のGradioの実装に戻す
+            gr.gradio.processing_utils.save_pil_to_cache = (
+                gr.processing_utils.save_pil_to_cache
+            )
+
+        # ファイルキャッシュの設定は条件に関係なく行われる
+        gr.gradio.processing_utils.save_file_to_cache = save_file_to_cache_nocache
 
         if settings.current.cleanup_tmpdir:
             cleanup_tmpdr()
@@ -291,7 +292,7 @@ def main():
             ssl_certfile=cmd_args.opts.tls_cert,
             debug=cmd_args.opts.gradio_debug,
             prevent_thread_lock=True,
-            allowed_paths=allowed_paths
+            allowed_paths=allowed_paths,
         )
 
         # Disable a very open middleware as Stable Diffusion web UI does
