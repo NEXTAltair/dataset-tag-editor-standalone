@@ -245,10 +245,23 @@ class DatasetTagEditor(Singleton):
 
         img_paths = sorted(filtered_set.datas.keys())
 
-        if settings.current.max_resolution > 0:
-            return [self.images.get(path) for path in img_paths]
-        else:
-            return img_paths
+        # 常にPIL.Imageオブジェクトを返す
+        result = []
+        for path in img_paths:
+            if path in self.images:
+                result.append(self.images[path])
+            else:
+                try:
+                    img = Image.open(path)
+                    if settings.current.max_resolution > 0:
+                        img_res = int(settings.current.max_resolution), int(settings.current.max_resolution)
+                        img.thumbnail(img_res)
+                    self.images[path] = img
+                    result.append(img)
+                except Exception as e:
+                    logger.error(f"Error loading image {path}: {e}")
+                    continue
+        return result
 
     def get_filtered_imgindices(self, filters: list[filters.Filter] = []):
         filtered_set = self.dataset.copy()

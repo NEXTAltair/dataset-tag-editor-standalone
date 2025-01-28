@@ -169,8 +169,6 @@ class LoadDatasetUI(UIBase):
                     settings.current.max_resolution,
                 )
                 imgs = dte_instance.get_filtered_imgs(filters=[])
-                from shared_state import state
-                state.restart()  # サーバーの再起動をトリガー
                 return [imgs, []] + update_filter_and_gallery()
             except Exception as e:
                 print(f"Error loading dataset: {str(e)}")
@@ -203,8 +201,6 @@ class LoadDatasetUI(UIBase):
         def unload_files():
             try:
                 dte_instance.clear()
-                from shared_state import state
-                state.restart()  # サーバーの再起動をトリガー
                 return (
                     [[], []]
                     + filter_by_tags.clear_filters()
