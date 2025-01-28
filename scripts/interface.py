@@ -110,60 +110,10 @@ def webpath(fn: Path):
     return f"file={path}?{os.path.getmtime(fn)}"
 
 
-def read_localization():
-    with open(
-        utilities.base_dir_path() / "javascript" / "zh-Hans.json", "r", encoding="utf-8"
-    ) as f:
-        return f.read()
-
-
-def javascript_html():
-    head = ""
-    if cmd_args.opts.localization == "zh-Hans":
-        head += f'<script type="text/javascript">var localization = {read_localization()}</script>\n'
-
-    js_path = utilities.base_dir_path() / "javascript"
-    logger.write(f"Looking for JavaScript files in: {js_path.absolute()}")
-    logger.write(f"Directory exists: {js_path.exists()}")
-
-    if js_path.exists():
-        for p in js_path.glob("*.js"):
-            logger.write(f"Found JS file: {p.absolute()}")
-            if p.is_file():
-                wp = webpath(p)
-                if wp:
-                    head += f'<script type="text/javascript" src="{wp}"></script>\n'
-                    logger.write(f"Added JS file to head: {p.name}")
-
-    return head
-
-
-def css_html():
-    head = ""
-    css_path = utilities.base_dir_path() / "css"
-    logger.write(f"Looking for CSS files in: {css_path.absolute()}")
-    logger.write(f"Directory exists: {css_path.exists()}")
-
-    if css_path.exists():
-        for p in css_path.glob("*.css"):
-            logger.write(f"Found CSS file: {p.absolute()}")
-            if p.is_file():
-                wp = webpath(p)
-                if wp:
-                    head += f'<link rel="stylesheet" property="stylesheet" href="{wp}">'
-                    logger.write(f"Added CSS file to head: {p.name}")
-
-    return head
-
-
 def reload_javascript():
-    js = javascript_html()
-    css = css_html()
 
     def template_response(*args, **kwargs):
         res = GradioTemplateResponseOriginal(*args, **kwargs)
-        res.body = res.body.replace(b"</head>", f"{js}</head>".encode("utf8"))
-        res.body = res.body.replace(b"</body>", f"{css}</body>".encode("utf8"))
         res.init_headers()
         return res
 
