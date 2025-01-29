@@ -33,7 +33,7 @@ class Tagger:
         raise NotImplementedError()
 
     def _is_wrapper_call(self) -> bool:
-        """呼び出し元がWrapperかどうかを判定する
+        """呼び出し元がlib..Wrapperかどうかを判定する
 
         Returns:
             bool: Wrapper経由の呼び出しの場合True

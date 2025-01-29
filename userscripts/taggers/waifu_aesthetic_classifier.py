@@ -68,6 +68,11 @@ class WaifuAesthetic(Tagger):
         score = math.floor(prediction.item() * 10)  # 0-1のスコアを0-10のスケールに変換して切り捨て
         return [f"[WAIFU]score_{score}"]
 
+    def _get_score(self, prediction):
+        """モデルの生出力をタグ形式に変換"""
+        score = math.floor(prediction.item() * 10)  # 0-1のスコアを0-10のスケールに変換して切り捨て
+        return [f"[WAIFU]score_{score}"]
+
     def predict(self, image: Image.Image, threshold=None):
         image_embeds = image_embeddings(image, self.clip_model, self.clip_processor)
         prediction:torch.Tensor = self.model(torch.from_numpy(image_embeds).float().to(devices.device))
