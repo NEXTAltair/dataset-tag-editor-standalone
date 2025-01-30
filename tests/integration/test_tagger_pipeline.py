@@ -1,8 +1,8 @@
 from pathlib import Path
 
 import pytest
-from PIL import Image
 from huggingface_hub.utils import RepositoryNotFoundError
+from PIL import Image
 
 from lib.tagger.wrapper import TaggerWrapper
 
@@ -39,7 +39,7 @@ class TestTaggerPipeline:
         "model_name",
         [
             "wd-eva02-large-tagger-v3",  # 最新の主力モデル
-            "wd-vit-large-tagger-v3",    # 人気の高いモデル
+            "wd-vit-large-tagger-v3",  # 人気の高いモデル
             pytest.param("wd-v1-4-swinv2-tagger-v2", marks=pytest.mark.slow),  # 安定版
             pytest.param("blip", marks=pytest.mark.slow),
             pytest.param("deep-danbooru", marks=pytest.mark.slow),
@@ -135,11 +135,14 @@ class TestTaggerPipeline:
                     assert isinstance(tags2, list)
 
                 # コンテキスト終了後の自動リソース解放を確認
-                assert not hasattr(managed_tagger.tagger, 'tagger_inst') or managed_tagger.tagger.tagger_inst is None
+                assert (
+                    not hasattr(managed_tagger.tagger, "tagger_inst")
+                    or managed_tagger.tagger.tagger_inst is None
+                )
 
             finally:
                 # クリーンアップ
-                if hasattr(tagger, 'tagger'):
+                if hasattr(tagger, "tagger"):
                     tagger.tagger.stop()
         except (RepositoryNotFoundError, RuntimeError) as e:
             pytest.skip(f"Model {model_name} not available: {str(e)}")
@@ -148,5 +151,7 @@ class TestTaggerPipeline:
     def test_invalid_model_handling(self):
         """無効なモデル名のハンドリングテスト"""
         invalid_model_name = "non-existent-model"
-        with pytest.raises(ValueError, match=f"Unknown model name: {invalid_model_name}"):
+        with pytest.raises(
+            ValueError, match=f"Unknown model name: {invalid_model_name}"
+        ):
             TaggerWrapper(invalid_model_name)
