@@ -32,6 +32,11 @@ class Tagger:
     def name(self):
         raise NotImplementedError()
 
+    def description(self):
+        """タガーの説明を返す
+        """
+        pass
+
     def _is_wrapper_call(self) -> bool:
         """呼び出し元がlib..Wrapperかどうかを判定する
 

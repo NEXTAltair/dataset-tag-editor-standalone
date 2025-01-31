@@ -105,7 +105,7 @@ class DatasetTagEditor(Singleton):
 
         self.INTERROGATORS = (
             [taggers_builtin.BLIP()]
-            + [taggers_builtin.BLIP2(name) for name in BLIP2_CAPTIONING_NAMES]
+            + [taggers_builtin.BLIP2(name) for name in BLIP2_CAPTIONING_NAMES.keys()]
             + [taggers_builtin.GITLarge()]
             + [taggers_builtin.DeepDanbooru(settings.current.tagger_use_rating)]
             + [
