@@ -46,7 +46,7 @@
 # モデルにわたす引数オプション
 
 thresholds (しきい値) 値が小さいとタグが多くなるが､精度が下がる､値が大きいとタグが少なくなるが､精度が上がる `scripts.dataset_tag_editor.interrigator_names` に一部はデフォルト値を設定している
- 
+    予測タグとしきい値を返すので､ここでメソッドで渡したしきい値でタグを絞る `scripts.dataset_tag_editor.taggers_builtin.WaifuDiffusion` とかで処理
 
 # 調べた
 
