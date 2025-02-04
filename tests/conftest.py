@@ -11,13 +11,17 @@ root_dir = Path(__file__).resolve().parent.parent
 scripts_dir = root_dir / "scripts"
 sys.path.extend([str(root_dir), str(scripts_dir)])
 
-# グローバルモックの作成
-devices_mock = MagicMock(spec=True)
-devices_mock.device = torch.device("cpu")
-devices_mock.cpu = torch.device("cpu")
 
-cmd_args_mock = MagicMock()
-logger_mock = MagicMock()
+@pytest.fixture(scope="function", autouse=True)
+def setup_device_mock():
+    """デバイスモックをセットアップするfixture"""
+    device = torch.device("cpu")
+    devices_mock = MagicMock(spec=True)
+    devices_mock.device = device
+    devices_mock.cpu = device
+
+    with patch.dict("sys.modules", {"devices": devices_mock}):
+        yield devices_mock
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -26,9 +30,6 @@ def setup_global_mocks():
     mocks = {
         "cmd_args": MagicMock(),
         "logger": MagicMock(),
-        "devices": MagicMock(
-            spec=True, device=torch.device("cpu"), cpu=torch.device("cpu")
-        ),
         "print_color": MagicMock(),
         "launch": MagicMock(),
         "utilities": MagicMock(),
@@ -55,11 +56,8 @@ def pytest_configure(config):
     # 必要なモジュールをモック化
     mock_modules = {
         "print_color": MagicMock(print=print),
-        "cmd_args": MagicMock(),
+        "cmd_args": MagicMock(opts=MagicMock(device_id=0)),
         "logger": MagicMock(),
-        "devices": MagicMock(
-            spec=True, device=torch.device("cpu"), cpu=torch.device("cpu")
-        ),
         "utilities": MagicMock(),
         "settings": MagicMock(current=MagicMock(tagger_use_spaces=False)),
         "launch": MagicMock(),
@@ -93,4 +91,3 @@ def mock_interrogator():
     mock.unload = MagicMock()
     mock.apply = MagicMock()
     return mock
-    sys.argv = [sys.argv[0]]  # __main__.pyの引数を無視
