@@ -1,50 +1,33 @@
 import sys
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+import torch
 
-# from scripts import devices  # devices.py はインポートしない (問題の原因)
-from tests.integration import devices_test  # devices_test.py を使用 (統合テスト用)
+# モデルディレクトリの設定
+TEST_MODEL_DIR = Path(__file__).parent.parent / "resources" / "models"
+TEST_MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
+# devices モジュールをモック化
+devices_mock = MagicMock()
+devices_mock.device = torch.device("cpu")
+devices_mock.torch_gc = MagicMock()
+sys.modules["scripts.devices"] = devices_mock
 
-@pytest.fixture
-def cpu_device():
-    """CPUデバイスを提供するfixture (devices_test.py 使用)"""
-    return devices_test.cpu  # devices_test.cpu をそのまま返す
+# settings モジュールの設定
+import settings
+settings.current = settings.Settings(
+    interrogator_model_dir=str(TEST_MODEL_DIR),
+    tagger_use_spaces=False
+)
 
+@pytest.fixture(scope="session")
+def test_model_dir():
+    """テスト用のモデルディレクトリを提供するfixture"""
+    return TEST_MODEL_DIR
 
-@pytest.fixture
-def cuda_device():
-    """CUDAデバイスを提供するfixture (devices_test.py 使用)"""
-    return devices_test.get_cuda_device()  # devices_test.get_cuda_device() をそのまま返す
-
-
-@pytest.fixture(scope="session", autouse=True)
-def disable_mocks():
-    """統合テスト用に既存のモックを無効化するfixture
-
-    統合テストでは実際のモジュールを使用するため、
-    tests.conftest.pyで設定されたモックを上書きする
-    """
-    # 実際のモジュールをインポート
-    import cmd_args
-    import launch
-    import logger
-    import settings
-    import utilities
-
-    from scripts.dataset_tag_editor import interrogators
-
-    # モックを実際のモジュールで上書き
-    mocks = {
-        "cmd_args": cmd_args,
-        "logger": logger,
-        "utilities": utilities,
-        "settings": settings,
-        "launch": launch,
-        "scripts.dataset_tag_editor.interrogators": interrogators,
-    }
-
-    with pytest.MonkeyPatch.context() as mp:
-        for name, module in mocks.items():
-            mp.setitem(sys.modules, name, module)
-        yield
+@pytest.fixture(scope="session")
+def devices():
+    """デバイスモックを提供するfixture"""
+    return devices_mock
