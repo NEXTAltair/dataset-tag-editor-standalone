@@ -1,0 +1,65 @@
+[aesthetic_shadow_v1]  # model_name
+type = "pipeline" # model_type 処理方法
+model_path = "shadowlilac/aesthetic-shadow" # model_path モファイルパスか､HFリポジトリ名､DL先のURL
+device = "cuda" # device 処理に使う使用デバイス
+class = "AestheticShadowV1" # class 使用するクラス Optional 必要ならば実装する
+
+[aesthetic_shadow_v2]
+type = "pipeline"
+model_path = "NEXTAltair/cache_aestheic-shadow-v2"
+device = "cuda"
+class = "AestheticShadowV2"
+
+[cafe_aesthetic]
+type = "pipeline"
+model_path = "cafeai/cafe_aesthetic"
+device = "cuda"
+score_prefix = "[CAFE]"  # タグ形式に変換されたスコアの先頭に付ける文字列 例: [CAFE]score_5
+class = "CafePredictor"
+
+[cafe_style] # TODO: scoring モデルではないので後回し
+type = "pipeline"
+model_path = "cafeai/cafe_style"
+device = "cuda"
+score_prefix = "[CAFE]"
+class = "CafePredictor"
+
+[cafe_waifu] # TODO: scoring モデルではないので後回し
+type = "pipeline"
+model_path = "cafeai/cafe_waifu"
+device = "cuda"
+score_prefix = "[CAFE]"
+class = "CafePredictor"
+
+[ImprovedAesthetic]
+type = "clip_mlp"
+model_path = "https://github.com/christophschuhmann/improved-aesthetic-predictor/raw/main/sac+logos+ava1-l14-linearMSE.pth" #ローカルに保存している場合はパスを指定
+base_model = "openai/clip-vit-large-patch14" # CLIPのベースモデル
+device = "cpu"
+score_prefix = "[IAP]"
+class = "ClipMlpModel"
+
+[WaifuAesthetic]
+type = "clip_classifier"
+model_path = "https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/models/aes-B32-v0.pth"
+base_model = "openai/clip-vit-base-patch32"
+device = "cpu"
+score_prefix = "[WAIFU]"
+class = "ClipClassifierModel"
+
+# [ImageReward] #TODO: 実装がクソややこしいので後回し `pip install image-reward` でライブラリとして導入すると依存関係の互換性で問題が出る
+# BLIPの開発元のライブラリ `salesforce-lavis`は Rustのビルドツールを要求されるからユーザーにわざわざ入れさせたくない
+# type = "blip_mlp"
+# base_model = "https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_large.pth"
+# device = "cpu"
+# class = "ImageRewardScorer"
+# model_path = "https://huggingface.co/THUDM/ImageReward/resolve/main/ImageReward.pt" # モデル重みファイルの直接ダウンロードURLに修正
+# score_prefix = "[IR]"
+
+# [ImageRewardAesthetic] # ImprovedAestheticと同じだよな?
+# type = "clip_mlp"
+# base_model = "https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_large.pth"
+# device = "cpu"
+# class = "ClipMlpModel"
+# model_path = "https://huggingface.co/THUDM/ImageReward/resolve/main/ImageReward.pt" # モデル重みファイルの直接ダウンロードURLに修正
+# score_prefix = "[IR]"

@@ -22,6 +22,13 @@
 
 古いモデルは消してもいいかもしれない
 
+ - waifu aerthetic と improved aesthetic はモデルが古いからサポートやめればいいかもしれない
+ 
+    - しかし､CLIPベースに埋め込みを適応するモデルは自作スコアラーモデルで使えるから残すべきかもしれない
+
+    - 2025/02 時点の技術ならもっといいカスタムスコアリングモデルの作成や実行ができるかもしれない
+
+    - 昔､数ヶ月から一年ぐらい前､としあきがとしあきチューンの評価モデル作りたいから画像集め手伝ってて言われたから､その時に作ったモデルがあるかもしれない｡ その実装はどんなものなんだろうか
 
 # toshiaki1729/dataset-tag-editor-standalone
 
@@ -46,7 +53,7 @@
 # モデルにわたす引数オプション
 
 thresholds (しきい値) 値が小さいとタグが多くなるが､精度が下がる､値が大きいとタグが少なくなるが､精度が上がる `scripts.dataset_tag_editor.interrigator_names` に一部はデフォルト値を設定している
- 
+    予測タグとしきい値を返すので､ここでメソッドで渡したしきい値でタグを絞る `scripts.dataset_tag_editor.taggers_builtin.WaifuDiffusion` とかで処理
 
 # 調べた
 
@@ -85,3 +92,7 @@ https://huggingface.co/laion/CLIP-ViT-g-14-laion2B-s34B-b88K
 
 https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k
     https://huggingface.co/silveroxides/CLIP-ViT-bigG-14-laion2B-39B-b160k-fp16 VRAM16GB以上必要動かせない
+
+https://github.com/THUDM/VisionReward/blob/main/README.md スコアモデル なんか多機能後で調べる
+
+https://github.com/Sindhuja1310/Aesthetic-evaluator

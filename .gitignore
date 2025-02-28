@@ -1,9 +1,9 @@
 # Byte-compiled / optimized / DLL files
-__pycache__/
-.vscode/
-venv/
-temp/
-models/
+__pycache__
+.vscode
+venv
+temp
+models
 .DS_Store
 config.json
 settings.json
