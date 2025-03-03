@@ -9,9 +9,7 @@ description = "画像評価モデルのラッパーライブラリ"
 readme = "README.md"
 requires-python = ">=3.12.4"
 license = "MIT"
-authors = [
-    { name = "Your Name", email = "your.email@example.com" }
-]
+authors = [{ name = "Your Name", email = "your.email@example.com" }]
 
 dependencies = [
     "torch>=2.5.1",
@@ -19,19 +17,17 @@ dependencies = [
     "Pillow>=10.0.0",
     "transformers>=4.27.4",
     "numpy>=1.26.0",
-    "image-reward",
     "pytest-playwright",
     "toml",
-    ]
+]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
-    "pytest-bdd>=7.0.0",
+    "pytest-bdd>=8.0.0",
     "pytest-xdist>=3.5.0",
     "pytest-cov>=4.1.0",
     "pytest-clarity>=1.0.1",
-    "black>=24.0.0",
     "mypy>=1.8.0",
     "ruff>=0.2.0",
     "types-requests>=2.32.0",
@@ -41,20 +37,17 @@ dev = [
 minversion = "8.0"
 addopts = "-ra -q --cov=scorer_wrapper_lib --cov-report=xml --cov-report=term"
 testpaths = ["tests"]
-bdd_features_base_dir = "tests/features/"
+bdd_features_base_dir = "scorer-wrapper-lib/tests"
 
 [tool.ruff]
 line-length = 108
 target-version = "py312"
+select = ["E", "F", "W"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "W", "C90"]
-ignore = ["D", "E501"]  # E501を明示的に無視
-exclude = [
-    "__pycache__",
-    "venv",
-    ".venv"
-]
+ignore = ["D", "E501"]                     # E501を明示的に無視
+exclude = ["__pycache__", "venv", ".venv"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -62,13 +55,7 @@ strict = true
 ignore_missing_imports = true
 
 [tool.coverage.run]
-omit = [
-    "test/*",
-    "*/*_test.py",
-    "*/test_*.py",
-]
+omit = ["test/*", "*/*_test.py", "*/test_*.py"]
 
 [tool.coverage.report]
-exclude_lines = [
-    "if __name__ == __main__:",
-]
+exclude_lines = ["if __name__ == __main__:"]
