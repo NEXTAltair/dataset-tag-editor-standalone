@@ -16,18 +16,27 @@ from scorer_wrapper_lib.core.utils import ConsoleLogCapture
 root_path = Path(__file__).parent.parent
 sys.path.append(str(root_path))
 
+# resourcesディレクトリのパス
+test_dir = Path(__file__).parent
+resources_dir = test_dir / "resources"
+
 
 # Given ステップ
 @given("有効な画像が用意されている", target_fixture="single_image")
 def given_single_image():
-    return [Image.open("tests/resources/img/1_img/file01.webp")]
+    # 絶対パスで画像ファイルを指定
+    image_path = resources_dir / "img" / "1_img" / "file01.webp"
+    return [Image.open(image_path)]
 
 
 @given("複数の有効な画像が用意されている", target_fixture="images")
 def given_image_list():
+    # 絶対パスで画像ファイルを指定
+    image_path1 = resources_dir / "img" / "1_img" / "file01.webp"
+    image_path2 = resources_dir / "img" / "1_img" / "file02.webp"
     return [
-        Image.open("tests/resources/img/1_img/file01.webp"),
-        Image.open("tests/resources/img/1_img/file02.webp"),
+        Image.open(image_path1),
+        Image.open(image_path2),
     ]
 
 

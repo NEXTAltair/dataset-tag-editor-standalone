@@ -235,12 +235,13 @@ def create_model(config: dict[str, Any]) -> dict[str, Any]:
         ValueError: 不明なモデルタイプが指定された場合
     """
     model_type = config["type"]
+    model_path = config["model_path"]
     device = config["device"]
     BATCH_SIZE = 8  # NOTE: 暫定的な設定ユーザーに設定求めるほどのものではない
 
     if model_type == "pipeline":
         pipeline_obj = pipeline(
-            model=config["model_path"],
+            model=model_path,
             device=device,
             batch_size=BATCH_SIZE,
         )

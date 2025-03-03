@@ -39,13 +39,13 @@ class BaseScorer(ABC):
     def load_or_restore_model(self) -> None:
         """
         モデルが読み込まれていない場合は読み込み、読み込まれている場合はメモリから復元します。
-
-        Raises:
-            Exception: モデル読み込み時に発生した例外をそのまま伝播します。
         """
         if not self.is_model_loaded:
+            # キャッシュキーをログに出力して確認
+            logger.debug(f"モデル '{self.model_name}' をロードします")
             self._load_model()
         else:
+            logger.debug(f"モデル '{self.model_name}' をメモリから復元します")
             self.restore_from_main_memory()
 
     def _release_model(self) -> None:
