@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import torch
-import torch.nn as nn
 from PIL import Image
 
 from .model_factory import create_model, image_embeddings
@@ -20,10 +19,12 @@ class BaseScorer(ABC):
             model_name (str): モデルの名前。
         """
         self.model_name = model_name
-        self.config = load_model_config()[model_name]
+        self.config: dict[str, Any] = load_model_config()[model_name]
         self.device = self.config["device"]
         self.model: dict[str, Any] = {}
-        self.is_model_loaded = False
+        self.is_model_loaded = (
+            False  # モデル構造のロード状態以外に重みのロード状態を管理するフラグも必要か?
+        )
         self.logger = logging.getLogger(__name__)
 
     def _load_model(self) -> None:
@@ -158,6 +159,9 @@ class BaseScorer(ABC):
             このメソッドを呼び出した後は、モデルを再度使用するには
             `load_or_restore_model()`を呼び出してモデルを再読み込みする必要があります。
         """
+        # OPTIMIZE: この実装は効率的ではありません。モデルを完全に解放するだけであれば、
+        # CPUにキャッシュする中間ステップは不要です。直接release_resourcesを呼び出すか、
+        # GPUメモリを確実に解放するための条件付き実装に修正すべきです。
         self.cache_to_main_memory()
         self.release_resources()
 
@@ -229,7 +233,7 @@ class BaseScorer(ABC):
         """
         return {
             "model_output": model_output,
-            "model_name": self.model_name,
+            "model_output": self.model_name,
             "score_tag": score_tag,
         }
 
@@ -419,64 +423,3 @@ class ClipClassifierModel(BaseScorer):
             str: モデルの表示名。
         """
         return f"CLIP+Classifier ({self.model_name})"
-
-
-class BlipMlpModel(nn.Module):
-    def __init__(self, model_name: str):
-        super().__init__()
-        self.blip = None
-        self.mlp = None
-        self.model = None
-
-    def cache_to_main_memory(self) -> None:
-        # キャッシュ処理はBLIP､CLIP､Pipelineで共通ならばBaseScorerに実装する
-        if self.model is not None and "blip" in self.model and hasattr(self.model["blip"], "model"):
-            self.model["blip"].to("cpu")  # BLIPモデル全体をCPUに移動
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            logger.info(
-                f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリにキャッシュしました。"
-            )
-        else:
-            logger.error(
-                f"[{self.__class__.__name__}] '{self.model_name}' には明示的な内部モデルがありません。"
-            )
-
-    def restore_from_main_memory(self) -> None:
-        # キャッシュ処理はBLIP､CLIP､Pipelineで共通ならばBaseScorerに実装する
-        if self.model is not None and "blip" in self.model and hasattr(self.model["blip"], "model"):
-            self.model["blip"].to(self.device)  # BLIPモデル全体をデバイスに移動
-            logger.info(f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリから復元しました。")
-        else:
-            logger.error(
-                f"[{self.__class__.__name__}] '{self.model_name}' には明示的な内部モデルがありません。"
-            )
-
-    def release_resources(self) -> None:
-        """デフォルトのリソース解放処理として、モデルを解放します。
-
-        各スコアラークラスで特殊な実装が必要な場合はオーバーライドしてください。
-        """
-        # モデルがない場合は何もしない
-        if self.model is None:
-            return
-
-        # パイプラインを含む辞書の場合、特別な処理
-        if isinstance(self.model, dict) and "pipeline" in self.model:
-            # パイプラインオブジェクトの参照を解放
-            self.model["pipeline"] = None
-            self.logger.info(
-                f"[{self.__class__.__name__}] '{self.model_name}' パイプラインのリソースを解放しました"
-            )
-
-        # 通常のリソース解放処理
-        self._release_model()
-
-    def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-        raise NotImplementedError
-
-    def _calculate_score(self, raw_output: Any) -> float:
-        raise NotImplementedError
-
-    def _get_score_tag(self, score: float) -> str:
-        return f"{self.config.get('score_prefix')}score_{score:.3f}"

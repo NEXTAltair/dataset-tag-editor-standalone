@@ -1,0 +1,127 @@
+"""テスト全体で共有されるfixtures。
+
+このモジュールでは、複数のテストファイルで使用される共通のfixtureを定義します。
+"""
+
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
+from PIL import Image
+import pytest
+from pytest_bdd import given, parsers
+
+from scorer_wrapper_lib.core.utils import ConsoleLogCapture
+
+
+# resourcesディレクトリのパス
+resources_dir = Path(__file__).parent / "resources"
+
+
+# 基本的なデータ準備 (pytestフィクスチャ)
+@pytest.fixture
+def single_image() -> list[Image.Image]:
+    image_path = resources_dir / "img" / "1_img" / "file01.webp"
+    return [Image.open(image_path)]
+
+
+@pytest.fixture
+def images() -> list[Image.Image]:
+    image_path1 = resources_dir / "img" / "1_img" / "file01.webp"
+    image_path2 = resources_dir / "img" / "1_img" / "file02.webp"
+    return [Image.open(image_path1), Image.open(image_path2)]
+
+
+@pytest.fixture
+def mock_config_toml():
+    with patch("scorer_wrapper_lib.core.utils.load_model_config") as mock_load_config:
+        mock_load_config.return_value = {
+            "test_model_01": {
+                "type": "pipeline",
+                "model_path": " path/to/test_model_01",
+                "device": "cuda",
+                "score_prefix": "[TEST01]",
+                "class": "TestScorer01",
+                "parameters": {"param1": "value1"},
+            },
+            "test_model_02": {
+                "type": "ClipClassifierModel",
+                "model_path": "path/to/test_model_02",
+                "device": "cpu",
+                "score_prefix": "[TEST02]",
+                "class": "TestScorer02",
+            },
+        }
+        yield
+
+
+# スコアラーテスト用のGivenステップ
+@given("単一の画像を用意する", target_fixture="target_images")
+def use_single_image(single_image: list[Image.Image]) -> list[Image.Image]:
+    """single_imageフィクスチャを流用するステップ"""
+    return single_image
+
+
+@given("複数の画像を用意する", target_fixture="target_images")
+def use_multiple_images(images: list[Image.Image]) -> list[Image.Image]:
+    """imagesフィクスチャを流用するステップ"""
+    return images
+
+
+@given(
+    parsers.parse("モデル {model_spec} が指定される"),
+    target_fixture="target_model_list",
+)
+def specify_models(model_spec: str) -> list[str]:
+    """モデル指定を処理するステップ（単一・複数両対応）
+
+    Args:
+        model_spec: モデル指定文字列。以下の形式をサポート:
+            - 単一モデル名: "ModelName"
+            - カンマ区切りリスト: "Model1, Model2"
+            - JSON形式リスト: '["Model1", "Model2"]'
+    """
+    # 最初にクォートを除去
+    clean_spec = model_spec.strip("\"'")
+
+    # カンマ区切りの場合
+    if "," in clean_spec and not clean_spec.startswith("["):
+        return [name.strip() for name in clean_spec.split(",")]
+
+    # JSON形式リストの場合
+    if clean_spec.startswith("["):
+        try:
+            import ast
+
+            result = ast.literal_eval(clean_spec)
+            if isinstance(result, list):
+                return result
+        except (ValueError, SyntaxError):
+            pass
+
+    # 単一モデル名の場合
+    return [clean_spec]
+
+
+# ログ関連のGivenステップ
+@given("コンソールログキャプチャツールが初期化される")
+def init_console_log_capture() -> ConsoleLogCapture:
+    """コンソールログキャプチャツールを初期化するステップ。"""
+    return ConsoleLogCapture()
+
+
+@given("ログファイルパスが指定される")
+def specify_log_file_path() -> Path:
+    """ログファイルパスを指定するステップ。"""
+    temp_dir = tempfile.gettempdir()
+    log_file = Path(temp_dir) / "console_log_test.log"
+    # テスト前にファイルが存在していたら削除
+    if log_file.exists():
+        log_file.unlink(missing_ok=True)
+    return log_file
+
+
+@given("標準出力のみキャプチャする設定がされる")
+def init_stdout_only_capture() -> ConsoleLogCapture:
+    """標準出力のみキャプチャする設定を行うステップ。"""
+    return ConsoleLogCapture(capture_stderr=False)

@@ -2,12 +2,17 @@ import importlib
 import inspect
 import logging
 from pathlib import Path
+from types import ModuleType
+from typing import Type, TypeVar
 
 from .core.base import BaseScorer
 from .core.utils import load_model_config
 
-_SCORER_REGISTRY = {}
-_MODEL_NAME_TO_CLASS = {}  # モデル名とクラス名の対応を保持する辞書
+T = TypeVar("T", bound=BaseScorer)
+ScorerClass = Type[BaseScorer]
+
+_SCORER_REGISTRY: dict[str, ScorerClass] = {}  # クラス名 → クラス定義
+_MODEL_TO_CLASS_MAP: dict[str, str] = {}  # モデル名 → クラス名
 logger = logging.getLogger("scorer_wrapper_lib")
 
 
@@ -24,7 +29,7 @@ def list_module_files(directory: str) -> list[Path]:
     return module_files
 
 
-def import_module_from_file(module_file: Path, base_module_path: str):
+def import_module_from_file(module_file: Path, base_module_path: str) -> ModuleType | None:
     module_name = module_file.stem
     full_module_path = f"{base_module_path}.{module_name}"
     try:
@@ -34,7 +39,7 @@ def import_module_from_file(module_file: Path, base_module_path: str):
         return None
 
 
-def recursive_subclasses(cls) -> set:
+def recursive_subclasses(cls: Type[T]) -> set[Type[T]]:
     """指定クラスのすべての再帰的サブクラスを返す"""
     subclasses = set(cls.__subclasses__())
     for subclass in cls.__subclasses__():
@@ -42,10 +47,10 @@ def recursive_subclasses(cls) -> set:
     return subclasses
 
 
-def gather_available_classes(directory: str) -> dict:
+def gather_available_classes(directory: str) -> dict[str, ScorerClass]:
     """score_models 内の全モジュールから、BaseScorer のサブクラスまたは
     predict() メソッドを持つクラスを抽出して返す"""
-    available = {}
+    available: dict[str, ScorerClass] = {}
     module_files = list_module_files(directory)
     for module_file in module_files:
         module = import_module_from_file(module_file, "scorer_wrapper_lib.score_models")
@@ -61,54 +66,75 @@ def gather_available_classes(directory: str) -> dict:
     return available
 
 
-def gather_core_classes() -> dict:
+def gather_core_classes() -> dict[str, ScorerClass]:
     """core.base 内の BaseScorer サブクラスを抽出して返す"""
     core_module = importlib.import_module(".core.base", package="scorer_wrapper_lib")
-    core = {}
+    core: dict[str, ScorerClass] = {}
     for name, obj in inspect.getmembers(core_module, inspect.isclass):
         if issubclass(obj, BaseScorer) and obj is not BaseScorer:
             core[name] = obj
     return core
 
 
-def register_models_from_config(config: dict, available: dict, core: dict) -> None:
-    """config の各モデル設定に基づき、利用可能なクラスまたはコアクラスからレジストリに登録する"""
-    for model_name, model_config in config.items():
-        desired_class = model_config.get("class")
-        if not desired_class:
-            logger.warning(f"Model {model_name} missing class definition.")
-            continue
-        if desired_class in available:
-            _SCORER_REGISTRY[desired_class] = available[desired_class]
-            _MODEL_NAME_TO_CLASS[model_name] = desired_class
-            logger.debug(f"Registered {model_name} with class {desired_class} from score_models")
-        elif desired_class in core:
-            _SCORER_REGISTRY[desired_class] = core[desired_class]
-            _MODEL_NAME_TO_CLASS[model_name] = desired_class
-            logger.debug(f"Registered {model_name} with class {desired_class} from core.base")
-        else:
-            logger.error(f"Class {desired_class} not found for model {model_name}.")
-
-
-def register_scorers() -> dict:
-    """メインのレジストリ登録処理。"""
+def register_scorers() -> dict[str, ScorerClass]:
+    """利用可能なスコアラークラスを登録し、モデル名とクラス名のマッピングも作成"""
     config = load_model_config()
+
+    # 利用可能なクラスを収集
     target_directory = "score_models"
     available = gather_available_classes(target_directory)
     core = gather_core_classes()
-    # 既に core.base から登録したものをレジストリに追加
+
+    # コアクラスをレジストリに追加
     for name, obj in core.items():
         _SCORER_REGISTRY[name] = obj
-    register_models_from_config(config, available, core)
+
+    # 設定ファイルに基づいてモデルとクラスのマッピングを作成
+    for model_name, model_config in config.items():
+        desired_class = model_config.get("class")
+        if not desired_class:
+            logger.warning(f"No class specified for model {model_name}")
+            continue
+
+        # モデル名→クラス名のマッピングを保存
+        _MODEL_TO_CLASS_MAP[model_name] = desired_class
+
+        # 利用可能なクラスから登録
+        if desired_class in available:
+            _SCORER_REGISTRY[desired_class] = available[desired_class]
+            logger.debug(f"Registered {desired_class} from score_models")
+        else:
+            logger.error(f"Class {desired_class} not found for model {model_name}")
+
     return _SCORER_REGISTRY
 
 
-def get_registry() -> dict:
+def get_registry() -> dict[str, ScorerClass]:
+    """スコアラークラスのレジストリを取得"""
     return _SCORER_REGISTRY
+
+
+def get_class_for_model(model_name: str) -> str:
+    """モデル名に対応するクラス名を取得"""
+    if model_name not in _MODEL_TO_CLASS_MAP:
+        raise ValueError(f"Model not found or has no class specified: {model_name}")
+    return _MODEL_TO_CLASS_MAP[model_name]
 
 
 def list_available_scorers() -> list[str]:
-    return list(_MODEL_NAME_TO_CLASS.keys())
+    """
+    利用可能なスコアラーモデル名のリストを返す
+
+    Returns:
+        list[str]: 設定ファイルで定義され、使用可能なモデル名のリスト
+
+    Example:
+        >>> from scorer_wrapper_lib import list_available_scorers
+        >>> models = list_available_scorers()
+        >>> print(models)
+        ['aesthetic_shadow_v1', 'ImprovedAesthetic', 'WaifuAesthetic', ...]
+    """
+    return list(_MODEL_TO_CLASS_MAP.keys())
 
 
 register_scorers()

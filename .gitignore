@@ -8,3 +8,10 @@ models
 config.json
 settings.json
 launch_user.bat
+.env
+coverage.xml
+.coverage
+logs/scorer_wrapper_lib.log
+scorer-wrapper-lib/logs/scorer_wrapper_lib.log
+.cursor/
+tests/logs/scorer_wrapper_lib.log

@@ -1,5 +1,11 @@
 from scorer_wrapper_lib.core.base import PipelineModel
 
+SCORE_THRESHOLDS = {
+    "very aesthetic": 0.71,
+    "aesthetic": 0.45,
+    "displeasing": 0.27,
+}
+
 
 class AestheticShadowV1(PipelineModel):
     """
@@ -8,14 +14,6 @@ class AestheticShadowV1(PipelineModel):
     HuggingFace の "shadowlilac/aesthetic-shadow" モデルを利用して画像の美的スコアを計算する。
     このモデルは、'hq' と 'lq' の 2 種類のラベルのスコアを出力
     """
-
-    BATCH_SIZE = 1
-
-    SCORE_THRESHOLDS = {
-        "very aesthetic": 0.71,
-        "aesthetic": 0.45,
-        "displeasing": 0.27,
-    }
 
     def __init__(self, model_name: str):
         super().__init__(model_name=model_name)
@@ -29,7 +27,7 @@ class AestheticShadowV1(PipelineModel):
         return hq
 
     def _get_score_tag(self, score: float) -> str:
-        for k, v in self.SCORE_THRESHOLDS.items():
+        for k, v in SCORE_THRESHOLDS.items():
             if score > v:
                 return k
         return "very displeasing"
@@ -41,13 +39,6 @@ class AestheticShadowV2(PipelineModel):
 
     HuggingFace の "NEXTAltair/cache_aestheic-shadow-v2" モデルを利用して画像の美的スコアを計算する。
     """
-
-    SCORE_THRESHOLDS = {
-        "very aesthetic": 0.71,
-        "aesthetic": 0.45,
-        "displeasing": 0.27,
-        "very displeasing": -float("-inf"),
-    }
 
     # model_path = "NEXTAltair/cache_aestheic-shadow-v2"
 
@@ -64,7 +55,7 @@ class AestheticShadowV2(PipelineModel):
         return hq
 
     def _get_score_tag(self, score: float) -> str:
-        for k, v in self.SCORE_THRESHOLDS.items():
+        for k, v in SCORE_THRESHOLDS.items():
             if score > v:
                 return k
         return "very displeasing"

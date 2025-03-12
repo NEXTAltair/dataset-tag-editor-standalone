@@ -252,7 +252,7 @@ def create_model(config: dict[str, Any]) -> dict[str, Any]:
     elif model_type == "clip_classifier":
         return create_clip_classifier_model(config)
     elif model_type == "blip_mlp":
-        # 実装が特殊なので
+        # NOTE: 実装が特殊なので、モデルのクラスを指定する
         if config["class"] == "ImageRewardScorer":
             return create_blip_sfr_vision_language_research_model(config)
         return create_blip_mlp_model(config)

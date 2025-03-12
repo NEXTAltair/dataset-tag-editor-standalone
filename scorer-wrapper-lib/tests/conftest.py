@@ -3,6 +3,10 @@
 このモジュールでは、複数のテストファイルで使用される共通のfixtureを定義します。
 """
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import sys
 import tempfile
 from pathlib import Path
@@ -23,14 +27,14 @@ resources_dir = test_dir / "resources"
 
 # Given ステップ
 @given("有効な画像が用意されている", target_fixture="single_image")
-def given_single_image():
+def given_single_image() -> list[Image.Image]:
     # 絶対パスで画像ファイルを指定
     image_path = resources_dir / "img" / "1_img" / "file01.webp"
     return [Image.open(image_path)]
 
 
 @given("複数の有効な画像が用意されている", target_fixture="images")
-def given_image_list():
+def given_image_list() -> list[Image.Image]:
     # 絶対パスで画像ファイルを指定
     image_path1 = resources_dir / "img" / "1_img" / "file01.webp"
     image_path2 = resources_dir / "img" / "1_img" / "file02.webp"
@@ -41,13 +45,13 @@ def given_image_list():
 
 
 @given("コンソールログキャプチャツールが初期化される")
-def init_console_log_capture():
+def init_console_log_capture() -> ConsoleLogCapture:
     """コンソールログキャプチャツールを初期化するステップ。"""
     return ConsoleLogCapture()
 
 
 @given("ログファイルパスが指定される")
-def specify_log_file_path():
+def specify_log_file_path() -> Path:
     """ログファイルパスを指定するステップ。"""
     temp_dir = tempfile.gettempdir()
     log_file = Path(temp_dir) / "console_log_test.log"
@@ -58,6 +62,6 @@ def specify_log_file_path():
 
 
 @given("標準出力のみキャプチャする設定がされる")
-def init_stdout_only_capture():
+def init_stdout_only_capture() -> ConsoleLogCapture:
     """標準出力のみキャプチャする設定を行うステップ。"""
     return ConsoleLogCapture(capture_stderr=False)

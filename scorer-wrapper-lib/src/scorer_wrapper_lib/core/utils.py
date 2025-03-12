@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 import sys
 from functools import lru_cache
 from io import StringIO
@@ -9,11 +11,13 @@ from urllib.parse import urlparse
 import requests
 import toml
 from huggingface_hub import snapshot_download
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 
 def load_file(path_or_url: str) -> str:
+    # TODO: やることが多いので分割
     """
     指定されたパス、URL、または HF Hub のモデル ID からファイルを取得し、ローカルパスを返します。
     - 入力に "http://" または "https://" が含まれている場合は、直リンとしてストリーミングダウンロードします。
@@ -93,7 +97,7 @@ def load_model_config() -> dict[str, Any]:
     # TODO: 設定なしのデフォルト値の設定は後でやるが､優先度低い
 
     Returns:
-        dict: _description_
+        dict: model_nameをキーとしたモデルごとのパラメーターの辞書
     """
     config_path = Path(__file__).parent.parent.parent.parent / "config" / "models.toml"
     return toml.load(config_path)
@@ -163,3 +167,68 @@ class ConsoleLogCapture:
                     f.write(f"--- STDOUT ---\n{self.stdout_buffer.getvalue()}\n")
                 if self.stderr_buffer:
                     f.write(f"--- STDERR ---\n{self.stderr_buffer.getvalue()}\n")
+
+
+def load_image_from_path(image_path: str) -> Image.Image:
+    """
+    ファイルパスから画像を読み込む関数
+
+    Args:
+        image_path: 画像ファイルのパス
+
+    Returns:
+        PIL.Image: 読み込まれた画像オブジェクト
+
+    Raises:
+        Exception: 画像の読み込みに失敗した場合
+    """
+    try:
+        image = Image.open(image_path)
+        return image
+    except Exception as e:
+        raise Exception(f"画像の読み込みに失敗しました: {e}")
+
+
+def get_model_config(model_name: str) -> dict:
+    """
+    指定されたモデル名の設定を取得します
+
+    Args:
+        model_name: 設定を取得するモデルの名前
+
+    Returns:
+        dict: モデルの設定情報
+
+    Raises:
+        Exception: 設定ファイルの読み込みに失敗した場合
+    """
+    config_path = f"config/models/{model_name}.json"
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            return json.load(f)
+    else:
+        # 既存のload_model_configの結果からモデル名に対応する設定を取得
+        all_configs = load_model_config()
+        if model_name in all_configs:
+            return all_configs[model_name]
+        raise Exception(f"モデル '{model_name}' の設定が見つかりませんでした")
+
+
+def validate_model_config(config: dict, required_fields: list) -> bool:
+    """
+    モデル設定が必要なフィールドを含んでいるか検証します
+
+    Args:
+        config: 検証するモデル設定
+        required_fields: 必須フィールドのリスト
+
+    Returns:
+        bool: 全ての必須フィールドが含まれている場合はTrue
+
+    Raises:
+        Exception: 必須フィールドが不足している場合
+    """
+    for field in required_fields:
+        if field not in config:
+            raise Exception(f"モデル設定に必須フィールド '{field}' がありません")
+    return True
