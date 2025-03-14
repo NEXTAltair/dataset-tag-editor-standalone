@@ -24,7 +24,7 @@ TEST_MODULE_FILES = [
     Path("__init__.py"),  # 除外されるべきファイル
 ]
 
-# テスト用のスコアラークラスデータ
+# テスト用のモデルクラスデータ
 TEST_SCORER_CLASSES = {
     "BaseScorer": type("BaseScorer", (), {"predict": lambda x: x}),
     "DerivedScorer": type(
@@ -41,7 +41,7 @@ TEST_CONFIG = {
 }
 
 
-@given("モジュールディレクトリが存在する", target_fixture="test_module_directory")
+@given("モデルモジュールディレクトリが存在する", target_fixture="test_module_directory")
 def given_module_directory():
     """テスト用のモジュールディレクトリのセットアップ"""
     return {"directory": TEST_MODULE_DIR}
@@ -59,20 +59,11 @@ def given_search_python_modules(test_module_directory):
 
 
 @given(
-    "スコアラークラスを含むディレクトリが存在する",
-    target_fixture="test_score_models_directory",
-)
-def given_score_models_directory():
-    """テスト用のスコアラークラスを含むディレクトリのセットアップ"""
-    return {"directory": "scorer_wrapper_lib.score_models"}
-
-
-@given(
-    "利用可能なスコアラークラスが収集されている",
+    "利用可能なモデルクラスが収集されている",
     target_fixture="available_scorer_classes",
 )
 def given_gather_available_classes():
-    """利用可能なスコアラークラスを収集"""
+    """利用可能なモデルクラスを収集"""
     mock_gather = MagicMock(return_value=TEST_SCORER_CLASSES)
     with patch(
         "scorer_wrapper_lib.scorer_registry.gather_available_classes", mock_gather
@@ -95,11 +86,8 @@ def when_import_module(search_python_modules):
     with patch("importlib.import_module", return_value=mock_module):
         results = []
         for file in search_python_modules["module_files"]:
-            if file.name != "__init__.py":
-                module = import_module_from_file(
-                    file, "scorer_wrapper_lib.score_models"
-                )
-                results.append(module)
+            module = import_module_from_file(file, "scorer_wrapper_lib.score_models")
+            results.append(module)
         return {"imported_modules": results}
 
 
@@ -108,9 +96,8 @@ def when_import_nonexistent_module(search_python_modules):
     with patch("importlib.import_module", side_effect=ImportError("Module not found")):
         results = []
         for file in search_python_modules["module_files"]:
-            if file.name != "__init__.py":
-                module = import_module_from_file(file, "nonexistent_module")
-                results.append(module)
+            module = import_module_from_file(file, "nonexistent_module")
+            results.append(module)
         return {"imported_modules": results}
 
 
@@ -166,9 +153,9 @@ def then_verify_error_on_import(nonexistent_module_result):
     )
 
 
-@then("利用可能なスコアラークラスの辞書が取得できる")
+@then("利用可能なモデルクラスの辞書が取得できる")
 def then_verify_available_classes(available_scorer_classes):
-    """利用可能なスコアラークラスの辞書の検証"""
+    """利用可能なモデルクラスの辞書の検証"""
     assert available_scorer_classes["classes"]
     assert len(available_scorer_classes["classes"]) == len(TEST_SCORER_CLASSES)
     assert all(

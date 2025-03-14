@@ -1,37 +1,55 @@
 Feature: ユーティリティ関数のテスト
     scorer_wrapper_lib.core.utils モジュールの機能を検証するためのテスト
 
-    Scenario: ローカルファイルのロード
-        Given ローカルに存在するファイルがある
-        When load_file関数でそのパスを指定する
-        Then ファイルの絶対パスが返される
+    # ローカルファイルとURL関連のテスト
+    Scenario: ローカルファイルの取得
+        Given ローカルに保存されたファイルがある
+        When そのパスを指定してファイルにアクセスする
+        Then 絶対パスのPathオブジェクトが返される
 
-    Scenario: URLからのファイルダウンロード
+    Scenario: URLからの新規ファイルダウンロード
         Given 有効なURLがある
-        When load_file関数でそのURLを指定する
-        Then ファイルがダウンロードされローカルパスが返される
+        When そのURLを指定してファイルにアクセスする
+        Then ファイルがダウンロードされる
+        And ダウンロードしたファイルはモジュールのmodelsディレクトリにキャッシュされる
+        And ファイル名はURLのパス部分から抽出される
+        And 絶対パスのPathオブジェクトが返される
 
-    Scenario: HuggingFace Hubからのリポジトリダウンロード
-        Given 有効なHuggingFace Hubのリポジトリ名がある
-        When load_file関数でそのリポジトリ名を指定する
-        Then リポジトリがダウンロードされローカルパスが返される
+    Scenario: 既にダウンロード済みのURLからのファイル取得
+        Given 有効なURLがある
+        And 以前にダウンロードしたファイルがキャッシュに存在する
+        When そのURLを指定してファイルにアクセスする
+        Then 新たなダウンロードは行われない
+        And 絶対パスのPathオブジェクトが返される
 
-    Scenario: 無効なパスからのファイル取得
+    # エラー処理関連のテスト
+    Scenario: 存在しないローカルファイルへのアクセス
         Given 存在しないパスがある
-        When load_file関数でそのパスを指定する
-        Then 適切な例外が発生する
+        When そのパスを指定してファイルにアクセスする
+        Then ファイルアクセスに失敗する
+        And 適切なエラーメッセージが表示される
 
+    Scenario: 無効なURLからのファイルアクセス
+        Given 無効なURLがある
+        When そのURLを指定してファイルにアクセスする
+        Then ファイルアクセスに失敗する
+        And 適切なエラーメッセージが表示される
+
+    Scenario: ファイルアクセスの総合的なエラーハンドリング
+        Given 無効なパスまたはURLがある
+        When そのパスを指定してファイルにアクセスする
+        Then ファイルアクセスに失敗する
+        And エラーメッセージには元のパスが含まれる
+
+    # その他のユーティリティ関数テスト
     Scenario: ロガーのセットアップ
         Given アプリケーション名がある
-        When setup_logger関数でロガーを初期化する
-        Then 標準出力とファイルにログが記録される
+        When ロガーをセットアップする
+        Then 標準出力にログが記録される
+        And ログファイルにもログが記録される
 
-    Scenario: TOMLからのモデル設定の読み込み
-        Given モデル設定ファイルが存在する
-        When load_model_config関数を呼び出す
+    Scenario: 設定ファイルからのモデル設定の取得
+        Given モデル設定ファイル(TOML形式)が存在する
+        When 設定ファイルから設定値にアクセスする
         Then 正しいモデル設定辞書が返される
-
-    Scenario: コンソール出力のキャプチャ
-        Given アプリケーションが標準出力に書き込む
-        When ConsoleLogCaptureクラスでコンソール出力をキャプチャする
-        Then 出力がログファイルに記録される
+        And 設定値はキャッシュされ再利用される

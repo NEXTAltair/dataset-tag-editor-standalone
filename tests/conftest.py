@@ -3,15 +3,12 @@
 このモジュールでは、複数のテストファイルで使用される共通のfixtureを定義します。
 """
 
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image
 import pytest
 from pytest_bdd import given, parsers
-
-from scorer_wrapper_lib.core.utils import ConsoleLogCapture
 
 
 # resourcesディレクトリのパス
@@ -52,7 +49,7 @@ def mock_config_toml():
                 "class": "TestScorer02",
             },
         }
-        yield
+        yield mock_load_config
 
 
 # スコアラーテスト用のGivenステップ
@@ -101,27 +98,3 @@ def specify_models(model_spec: str) -> list[str]:
 
     # 単一モデル名の場合
     return [clean_spec]
-
-
-# ログ関連のGivenステップ
-@given("コンソールログキャプチャツールが初期化される")
-def init_console_log_capture() -> ConsoleLogCapture:
-    """コンソールログキャプチャツールを初期化するステップ。"""
-    return ConsoleLogCapture()
-
-
-@given("ログファイルパスが指定される")
-def specify_log_file_path() -> Path:
-    """ログファイルパスを指定するステップ。"""
-    temp_dir = tempfile.gettempdir()
-    log_file = Path(temp_dir) / "console_log_test.log"
-    # テスト前にファイルが存在していたら削除
-    if log_file.exists():
-        log_file.unlink(missing_ok=True)
-    return log_file
-
-
-@given("標準出力のみキャプチャする設定がされる")
-def init_stdout_only_capture() -> ConsoleLogCapture:
-    """標準出力のみキャプチャする設定を行うステップ。"""
-    return ConsoleLogCapture(capture_stderr=False)
