@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import logging
+import traceback
 from pathlib import Path
 from types import ModuleType
 from typing import Type, TypeVar
@@ -11,8 +12,7 @@ from .core.utils import load_model_config
 T = TypeVar("T", bound=BaseScorer)
 ScorerClass = Type[BaseScorer]
 
-_SCORER_REGISTRY: dict[str, ScorerClass] = {}  # クラス名 → クラス定義
-_MODEL_TO_CLASS_MAP: dict[str, str] = {}  # モデル名 → クラス名
+_MODEL_CLASS_OBJ_REGISTRY: dict[str, ScorerClass] = {}  # モデル名 → クラスオブジェクト
 logger = logging.getLogger("scorer_wrapper_lib")
 
 
@@ -25,7 +25,7 @@ def list_module_files(directory: str) -> list[Path]:
         if p.name != "__init__.py":
             logger.debug(f"Found module file: {p}")
             module_files.append(p)
-    logger.debug(f"Total module files found: {len(module_files)}")
+    logger.debug(f"見つかった合計モジュールファイル: {len(module_files)}")
     return module_files
 
 
@@ -66,64 +66,47 @@ def gather_available_classes(directory: str) -> dict[str, ScorerClass]:
     return available
 
 
-def gather_core_classes() -> dict[str, ScorerClass]:
-    """core.base 内の BaseScorer サブクラスを抽出して返す"""
-    core_module = importlib.import_module(".core.base", package="scorer_wrapper_lib")
-    core: dict[str, ScorerClass] = {}
-    for name, obj in inspect.getmembers(core_module, inspect.isclass):
-        if issubclass(obj, BaseScorer) and obj is not BaseScorer:
-            core[name] = obj
-    return core
-
-
 def register_scorers() -> dict[str, ScorerClass]:
-    """利用可能なスコアラークラスを登録し、モデル名とクラス名のマッピングも作成"""
+    """利用可能なスコアラークラスを登録"""
+    # 開始ログ
+    caller = traceback.extract_stack()[-2]
+    logger.debug(f"register_scorers開始: 呼び出し元={caller[0]}:{caller[1]} in {caller[2]}")
+    logger.debug(f"現在のレジストリ状態: {list(_MODEL_CLASS_OBJ_REGISTRY.keys())}")
+
     config = load_model_config()
+    logger.debug(f"設定ファイル読み込み完了: {len(config)}モデル: {list(config.keys())}")
 
     # 利用可能なクラスを収集
     target_directory = "score_models"
     available = gather_available_classes(target_directory)
-    core = gather_core_classes()
-
-    # コアクラスをレジストリに追加
-    for name, obj in core.items():
-        _SCORER_REGISTRY[name] = obj
+    logger.debug(f"利用可能クラス一覧: {len(available)}クラス: {list(available.keys())}")
 
     # 設定ファイルに基づいてモデルとクラスのマッピングを作成
     for model_name, model_config in config.items():
         desired_class = model_config.get("class")
         if not desired_class:
-            logger.warning(f"No class specified for model {model_name}")
+            logger.warning(f"モデルにクラスが指定されていません{model_name}")
             continue
-
-        # モデル名→クラス名のマッピングを保存
-        _MODEL_TO_CLASS_MAP[model_name] = desired_class
 
         # 利用可能なクラスから登録
         if desired_class in available:
-            _SCORER_REGISTRY[desired_class] = available[desired_class]
-            logger.debug(f"Registered {desired_class} from score_models")
+            _MODEL_CLASS_OBJ_REGISTRY[model_name] = available[desired_class]
+            logger.debug(f"モデル登録: {model_name} → {desired_class}")
         else:
-            logger.error(f"Class {desired_class} not found for model {model_name}")
+            logger.error(f"{model_name}が使用する{desired_class}は定義されていません")
 
-    return _SCORER_REGISTRY
+    logger.debug(f"register_scorers完了: 最終レジストリ状態: {list(_MODEL_CLASS_OBJ_REGISTRY.keys())}")
+    return _MODEL_CLASS_OBJ_REGISTRY
 
 
 def get_registry() -> dict[str, ScorerClass]:
     """スコアラークラスのレジストリを取得"""
-    return _SCORER_REGISTRY
-
-
-def get_class_for_model(model_name: str) -> str:
-    """モデル名に対応するクラス名を取得"""
-    if model_name not in _MODEL_TO_CLASS_MAP:
-        raise ValueError(f"Model not found or has no class specified: {model_name}")
-    return _MODEL_TO_CLASS_MAP[model_name]
+    return _MODEL_CLASS_OBJ_REGISTRY
 
 
 def list_available_scorers() -> list[str]:
     """
-    利用可能なスコアラーモデル名のリストを返す
+    register_scorersで登録された利用可能なスコアラーモデル名のリストを返す
 
     Returns:
         list[str]: 設定ファイルで定義され、使用可能なモデル名のリスト
@@ -134,7 +117,10 @@ def list_available_scorers() -> list[str]:
         >>> print(models)
         ['aesthetic_shadow_v1', 'ImprovedAesthetic', 'WaifuAesthetic', ...]
     """
-    return list(_MODEL_TO_CLASS_MAP.keys())
+    return list(_MODEL_CLASS_OBJ_REGISTRY.keys())
 
 
+# モジュールロード時の初期化ログ
+logger.debug("モジュール初期化: scorer_registry.py がロードされました")
 register_scorers()
+logger.debug(f"初期レジストリ構築完了: {len(_MODEL_CLASS_OBJ_REGISTRY)}モデル登録済み")
