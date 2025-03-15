@@ -31,25 +31,25 @@ def images() -> list[Image.Image]:
 
 @pytest.fixture
 def mock_config_toml():
+    data = {
+        "test_model_01": {
+            "type": "pipeline",
+            "model_path": " path/to/test_model_01",
+            "device": "cuda",
+            "score_prefix": "[TEST01]",
+            "class": "TestScorer01",
+        },
+        "test_model_02": {
+            "type": "ClipClassifierModel",
+            "model_path": "path/to/test_model_02",
+            "device": "cpu",
+            "score_prefix": "[TEST02]",
+            "class": "TestScorer02",
+        },
+    }
     with patch("scorer_wrapper_lib.core.utils.load_model_config") as mock_load_config:
-        mock_load_config.return_value = {
-            "test_model_01": {
-                "type": "pipeline",
-                "model_path": " path/to/test_model_01",
-                "device": "cuda",
-                "score_prefix": "[TEST01]",
-                "class": "TestScorer01",
-                "parameters": {"param1": "value1"},
-            },
-            "test_model_02": {
-                "type": "ClipClassifierModel",
-                "model_path": "path/to/test_model_02",
-                "device": "cpu",
-                "score_prefix": "[TEST02]",
-                "class": "TestScorer02",
-            },
-        }
-        yield mock_load_config
+        mock_load_config.return_value = data
+        yield data
 
 
 # スコアラーテスト用のGivenステップ

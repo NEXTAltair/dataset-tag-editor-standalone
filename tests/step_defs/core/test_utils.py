@@ -130,7 +130,7 @@ def given_application_name_exists() -> str:
 )
 def given_model_config_file_exists(mock_config_toml) -> dict:
     # ファイルを作成せず、辞書を直接返す
-    return mock_config_toml.return_value
+    return mock_config_toml
 
 
 # When steps
