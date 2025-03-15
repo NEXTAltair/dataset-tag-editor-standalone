@@ -7,22 +7,22 @@ from .core.utils import setup_logger
 # アプリケーション全体のロガー設定
 setup_logger("scorer_wrapper_lib")
 
-__all__ = ["evaluate", "list_available_scorers"]
+__all__ = ["evaluate", "list_available_models"]
 
 
 # モジュールレベルのキャッシュ
 # NOTE: 遅延インポートにして必要なときだけscorer_registryとscorerをインポートしないと他のテストが激遅になる
-_cached_list_available_scorers = None
+_cached_list_available_models = None
 _cached_evaluate = None
 
 
-def list_available_scorers() -> list[str]:
-    global _cached_list_available_scorers
-    if _cached_list_available_scorers is None:
+def list_available_models() -> list[str]:
+    global _cached_list_available_models
+    if _cached_list_available_models is None:
         from .scorer_registry import list_available_scorers as _list_available_scorers
 
-        _cached_list_available_scorers = _list_available_scorers
-    return _cached_list_available_scorers()
+        _cached_list_available_models = _list_available_scorers
+    return _list_available_scorers()
 
 
 def evaluate(images_list: list[Image.Image], model_name_list: list[str]) -> dict[str, list[dict[str, Any]]]:
