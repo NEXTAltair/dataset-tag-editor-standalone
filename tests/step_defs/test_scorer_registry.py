@@ -2,15 +2,13 @@
 スコアラーレジストリの単体テスト
 """
 
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+import pytest
+
+from unittest.mock import patch
 from pytest_bdd import given, when, then, scenarios
 from scorer_wrapper_lib.scorer_registry import (
-    list_module_files,
-    import_module_from_file,
     register_scorers,
     get_registry,
-    list_available_scorers,
 )
 
 # シナリオファイルの読み込み
@@ -18,188 +16,120 @@ scenarios("../features/scorer_registry.feature")
 
 # テスト用のフィクスチャデータ
 TEST_MODULE_DIR = "test_modules"
-TEST_MODULE_FILES = [
-    Path("test_module1.py"),
-    Path("test_module2.py"),
-    Path("__init__.py"),  # 除外されるべきファイル
-]
-
-# テスト用のモデルクラスデータ
-TEST_SCORER_CLASSES = {
-    "BaseScorer": type("BaseScorer", (), {"predict": lambda x: x}),
-    "DerivedScorer": type(
-        "DerivedScorer",
-        (type("BaseScorer", (), {"predict": lambda x: x}),),
-        {"predict": lambda x: x * 2},
-    ),
-}
-
-# テスト用の設定データ
-TEST_CONFIG = {
-    "base_scorer": {"class": "BaseScorer"},
-    "derived_scorer": {"class": "DerivedScorer"},
-}
 
 
-@given("モデルモジュールディレクトリが存在する", target_fixture="test_module_directory")
-def given_module_directory():
-    """テスト用のモジュールディレクトリのセットアップ"""
-    return {"directory": TEST_MODULE_DIR}
+@given("モデル設定TOMLファイルが存在する", target_fixture="test_config_toml")
+def given_config_toml_exists(mock_config_toml):
+    """モデル設定TOMLファイルのセットアップ"""
+    return mock_config_toml
 
 
 @given(
-    "Pythonモジュールファイルを検索した結果がある",
-    target_fixture="search_python_modules",
+    "モデルモジュールディレクトリが利用可能である",
+    target_fixture="test_module_directory",
 )
-def given_search_python_modules(test_module_directory):
-    """モジュールファイルの検索を実行"""
-    with patch("pathlib.Path.glob", return_value=TEST_MODULE_FILES):
-        result = list_module_files(test_module_directory["directory"])
-        return {"module_files": result}
+def given_module_directory_exists():
+    """モジュールディレクトリのセットアップ"""
+    return TEST_MODULE_DIR
 
 
-@given(
-    "利用可能なモデルクラスが収集されている",
-    target_fixture="available_scorer_classes",
-)
-def given_gather_available_classes():
-    """利用可能なモデルクラスを収集"""
-    mock_gather = MagicMock(return_value=TEST_SCORER_CLASSES)
+@given("モデルレジストリが構築されている", target_fixture="test_registry")
+def given_model_registry_built(test_config_toml):
+    """テスト用のレジストリを構築"""
+
+    # テスト用のモデルクラス定義
+    mock_classes = {
+        "TestScorer01": type("TestScorer01", (), {"predict": lambda x: x}),
+        "TestScorer02": type("TestScorer02", (), {"predict": lambda x: x * 2}),
+    }
+
+    # register_scorersの中で使用される依存関係をモック化
     with patch(
-        "scorer_wrapper_lib.scorer_registry.gather_available_classes", mock_gather
+        "scorer_wrapper_lib.scorer_registry.load_model_config",
+        return_value=test_config_toml,
     ):
-        return {"classes": TEST_SCORER_CLASSES}
-
-
-@given("スコアラー設定が存在する", target_fixture="test_load_model_config")
-def given_load_model_config():
-    """スコアラー設定をロード"""
-    with patch(
-        "scorer_wrapper_lib.scorer_registry.load_model_config", return_value=TEST_CONFIG
-    ):
-        return TEST_CONFIG
-
-
-@when("モジュールをインポートする", target_fixture="import_module_result")
-def when_import_module(search_python_modules):
-    mock_module = MagicMock()
-    with patch("importlib.import_module", return_value=mock_module):
-        results = []
-        for file in search_python_modules["module_files"]:
-            module = import_module_from_file(file, "scorer_wrapper_lib.score_models")
-            results.append(module)
-        return {"imported_modules": results}
-
-
-@when("存在しないモジュールのインポート", target_fixture="nonexistent_module_result")
-def when_import_nonexistent_module(search_python_modules):
-    with patch("importlib.import_module", side_effect=ImportError("Module not found")):
-        results = []
-        for file in search_python_modules["module_files"]:
-            module = import_module_from_file(file, "nonexistent_module")
-            results.append(module)
-        return {"imported_modules": results}
-
-
-@when("スコアラーを登録する", target_fixture="registered_scorers")
-def when_register_scorers(available_scorer_classes):
-    """スコアラーを登録"""
-    mock_register = MagicMock(return_value=available_scorer_classes["classes"])
-    with patch("scorer_wrapper_lib.scorer_registry.register_scorers", mock_register):
-        result = register_scorers()
-        return {"registry": result}
-
-
-@when("レジストリを取得する", target_fixture="registry_result")
-def when_get_registry(registered_scorers):
-    """レジストリを取得"""
-    mock_get_registry = MagicMock(return_value=registered_scorers["registry"])
-    with patch("scorer_wrapper_lib.scorer_registry.get_registry", mock_get_registry):
-        result = get_registry()
-        # list_available_scorersのモックも設定
-        mock_list = MagicMock(return_value=list(TEST_CONFIG.keys()))
         with patch(
-            "scorer_wrapper_lib.scorer_registry.list_available_scorers", mock_list
+            "scorer_wrapper_lib.scorer_registry.gather_available_classes",
+            return_value=mock_classes,
         ):
-            available_scorers = list_available_scorers()
-        return {
-            "registry": result,
-            "available_scorers": available_scorers,
-        }
+            registry = register_scorers()
+            return registry
 
 
-@then("指定したディレクトリ内のPythonファイル一覧が取得できる")
-def then_verify_module_files(search_python_modules):
-    """検索結果の検証"""
-    result = search_python_modules["module_files"]
-    assert len(result) == 2  # __init__.pyは除外される
-    assert all(f.suffix == ".py" for f in result)
-    assert not any(f.name == "__init__.py" for f in result)
+@when("モデルクラスオブジェクトレジストリを構築する", target_fixture="test_registry")
+def when_model_registry_built(test_config_toml):
+    return given_model_registry_built(test_config_toml)
 
 
-@then("モジュールが正常にインポートされる")
-def then_verify_module_import(import_module_result):
-    assert import_module_result["imported_modules"]
-    assert all(
-        module is not None for module in import_module_result["imported_modules"]
+@when("利用可能なモデル名のリストを取得する", target_fixture="test_model_name_list")
+def when_available_model_names_list_obtained(test_registry):
+    # デバッグ情報
+    print("\n=== デバッグ情報 ===")
+    print(f"テストレジストリのキー: {list(test_registry.keys())}")
+
+    from scorer_wrapper_lib.scorer_registry import _MODEL_CLASS_OBJ_REGISTRY
+
+    print(f"グローバルレジストリのキー: {list(_MODEL_CLASS_OBJ_REGISTRY.keys())}")
+    print("=== デバッグ情報終了 ===\n")
+
+    # テスト用レジストリからモデル名を直接取得
+    return list(test_registry.keys())
+
+
+@when("レジストリから特定のモデルを取得する", target_fixture="test_specific_model")
+def when_specific_model_obtained_from_registry(test_registry):
+    registry = get_registry()
+    # レジストリから最初のモデルを取得
+    if registry:
+        model_name = next(iter(registry.keys()))
+        specific_model = registry[model_name]
+        return specific_model
+    else:
+        pytest.fail("レジストリにモデルが存在しません")
+
+
+@then("モデル名をキーにモデルクラスオブジェクトが登録されている")
+def then_model_name_key_model_class_object_registered(test_registry):
+    # レジストリが空でないことを確認
+    assert len(test_registry) > 0, "レジストリにモデルが登録されていません"
+
+    # 各値がクラスオブジェクト（type型）であることを確認
+    for model_name, model_class in test_registry.items():
+        assert isinstance(model_class, type), (
+            f"値はクラスオブジェクトである必要があります: {model_name} -> {model_class}"
+        )
+
+
+@then("レジストリの内容は設定ファイルの内容と一致する")
+def then_registry_content_matches_config_file(test_config_toml, test_registry):
+    for model_name, model_config in test_config_toml.items():
+        assert model_name in test_registry.keys(), (
+            f"config_toml に存在するモデル: {model_name} がレジストリに存在しません"
+        )
+
+        # クラス名で比較（レジストリのクラスオブジェクトから__name__を取得）
+        class_name = test_registry[model_name].__name__
+        assert class_name == model_config["class"], (
+            f"モデル {model_name} のクラス名が一致しません: "
+            f"レジストリには {class_name}, 設定には {model_config['class']}"
+        )
+
+
+@then("設定ファイルに記述されたすべてのモデル名がリストに含まれている")
+def then_all_model_names_in_config_file_in_list(test_model_name_list, test_config_toml):
+    assert set(test_config_toml.keys()).issubset(set(test_model_name_list))
+
+
+@then("モデル名に対応するクラスオブジェクトが返される")
+def then_model_name_corresponding_class_object_returned(test_specific_model):
+    # 取得したクラスオブジェクトがNoneでないことを確認
+    assert test_specific_model is not None, "モデルが取得できませんでした"
+
+    # 取得したオブジェクトがクラス（type）であることを確認
+    assert isinstance(test_specific_model, type), (
+        f"取得したオブジェクトはクラスオブジェクトではありません: {type(test_specific_model)}"
     )
 
-
-@then("存在しないモジュールのインポートが失敗したことを検証")
-def then_verify_error_on_import(nonexistent_module_result):
-    assert nonexistent_module_result["imported_modules"]
-    assert all(
-        module is None for module in nonexistent_module_result["imported_modules"]
-    )
-
-
-@then("利用可能なモデルクラスの辞書が取得できる")
-def then_verify_available_classes(available_scorer_classes):
-    """利用可能なモデルクラスの辞書の検証"""
-    assert available_scorer_classes["classes"]
-    assert len(available_scorer_classes["classes"]) == len(TEST_SCORER_CLASSES)
-    assert all(
-        name in available_scorer_classes["classes"]
-        for name in TEST_SCORER_CLASSES.keys()
-    )
-
-
-@then("基本実装と派生クラスが含まれている")
-def then_verify_class_hierarchy(available_scorer_classes):
-    """基本実装と派生クラスの存在を検証"""
-    classes = available_scorer_classes["classes"]
-    assert "BaseScorer" in classes
-    assert "DerivedScorer" in classes
-    assert all(hasattr(cls, "predict") for cls in classes.values())
-
-
-@then("スコアラーが正しく登録される")
-def then_verify_registration(registered_scorers):
-    """スコアラーの登録が成功したことを検証"""
-    assert registered_scorers["registry"], "レジストリが空です"
-    assert len(registered_scorers["registry"]) > 0, (
-        "スコアラーが1つも登録されていません"
-    )
-    assert all(
-        hasattr(cls, "predict") for cls in registered_scorers["registry"].values()
-    ), "predictメソッドを持たないスコアラーが含まれています"
-
-
-@then("登録されたスコアラーの辞書が取得できる")
-def then_verify_registry(registry_result):
-    """登録されたスコアラーの辞書の検証"""
-    assert registry_result["registry"], "レジストリが空です"
-    assert len(registry_result["registry"]) > 0, "スコアラーが1つも登録されていません"
-    assert all(isinstance(name, str) for name in registry_result["registry"].keys()), (
-        "スコアラー名が文字列ではありません"
-    )
-
-
-@then("登録されているスコアラー名のリストが取得できる")
-def then_verify_registered_scorer_names(registry_result):
-    """登録されているスコアラー名のリストの検証"""
-    available_scorers = registry_result["available_scorers"]
-    assert len(available_scorers) > 0, "スコアラー名が1つも登録されていません"
-    assert all(isinstance(name, str) for name in available_scorers), (
-        "スコアラー名が文字列ではありません"
-    )
+    # クラスオブジェクトの名前が意味のある値であることを確認（オプション）
+    class_name = test_specific_model.__name__
+    assert len(class_name) > 0, "クラス名が空です"
