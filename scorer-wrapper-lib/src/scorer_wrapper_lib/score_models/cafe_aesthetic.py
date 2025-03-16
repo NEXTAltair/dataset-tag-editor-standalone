@@ -11,7 +11,7 @@ class CafePredictor(PipelineModel):
     def __init__(self, model_name: str):
         super().__init__(model_name=model_name)
 
-    def _calculate_score(self, raw_output: list[dict]) -> float:
+    def _calculate_score(self, raw_output: list[dict[str, str | float]]) -> float:
         """
         モデルの出力から審美的スコアを計算する
 
@@ -22,11 +22,14 @@ class CafePredictor(PipelineModel):
         Returns:
             float: 'aesthetic' ラベルのスコア値
         """
-        score_by_label = {}
         for entry in raw_output:
-            score_by_label[entry["label"]] = entry["score"]
-        score = score_by_label["aesthetic"]
-        return score
+            if entry["label"] == "aesthetic":
+                try:
+                    return float(entry["score"])  # float にキャスト
+                except (TypeError, ValueError):
+                    self.logger.error(f"モデルからの戻り値にlabel aestheticが見つかりません: {entry}")
+                    return 0.0  # キャストに失敗した場合はデフォルト値 0.0 を返す
+        return 0.0
 
     def _get_score_tag(self, score: float) -> str:
         return f"{self.config['score_prefix']}score_{int(score * 10)}"

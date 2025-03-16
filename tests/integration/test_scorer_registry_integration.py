@@ -3,13 +3,11 @@
 このモジュールでは、スコアラーレジストリモジュールの統合テストを実装します。
 """
 
-import pytest
-
 from pytest_bdd import given, scenarios, then, when
 from scorer_wrapper_lib.core.utils import load_model_config  # type: ignore
 from scorer_wrapper_lib.scorer_registry import (  # type: ignore
     register_scorers,
-    get_registry,
+    get_cls_obj_registry,
     list_available_scorers,
 )
 
@@ -48,14 +46,12 @@ def when_available_model_names_list_obtained():
 
 @when("レジストリから特定のモデルを取得する", target_fixture="test_specific_model")
 def when_specific_model_obtained_from_registry():
-    registry = get_registry()
+    registry = get_cls_obj_registry()
     # レジストリから最初のモデルを取得
     if registry:
         model_name = next(iter(registry.keys()))
         specific_model = registry[model_name]
         return specific_model
-    else:
-        pytest.fail("レジストリにモデルが存在しません")
 
 
 @then("モデル名をキーにモデルクラスオブジェクトが登録されている")

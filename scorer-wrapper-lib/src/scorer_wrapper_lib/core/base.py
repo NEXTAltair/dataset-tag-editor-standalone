@@ -225,6 +225,7 @@ class BaseScorer(ABC):
         """標準化された結果の辞書を生成します。
 
         Args:
+            model_name (str): モデルの名前。
             model_output: モデルの出力。
             score_tag (str)-各サブクラスでスコアを変換したタグ
 
@@ -232,8 +233,8 @@ class BaseScorer(ABC):
             dict: モデル出力、モデル名、スコアタグを含む辞書。
         """
         return {
+            "model_name": self.model_name,
             "model_output": model_output,
-            "model_output": self.model_name,
             "score_tag": score_tag,
         }
 
@@ -285,12 +286,13 @@ class PipelineModel(BaseScorer):
         for image in images:
             pipeline_model = self.model["pipeline"]
             raw_output = pipeline_model(image)
+            self.logger.debug(f"モデル '{self.model_name}' に処理された生の出力結果: {raw_output}")
             score = self._calculate_score(raw_output)
             score_tag = self._get_score_tag(score)
             results.append(
                 {
-                    "model_output": raw_output,
                     "model_name": self.model_name,
+                    "model_output": raw_output,
                     "score_tag": score_tag,
                 }
             )
@@ -320,15 +322,6 @@ class PipelineModel(BaseScorer):
         """
         pass
 
-    def name(self) -> str:
-        """パイプラインモデルの表示名を返します。
-
-        Returns:
-            str: モデルの表示名。
-        """
-        return f"transformers.Pipeline ({self.model_name})"
-
-
 class ClipMlpModel(BaseScorer):
     def __init__(self, model_name: str):
         """ClipMlpModel を初期化します。
@@ -355,6 +348,7 @@ class ClipMlpModel(BaseScorer):
             image_embedding = self.preprocess(image)
             tensor_input = self._prepare_tensor(image_embedding)
             raw_score = self.model["model"](tensor_input).item()
+            self.logger.debug(f"モデル '{self.model_name}' に処理された生の出力結果: {raw_score}")
             calculated_score = self._calculate_score(raw_score)
             score_tag = self._get_score_tag(calculated_score)
             results.append(self._generate_result(raw_score, score_tag))
@@ -367,14 +361,6 @@ class ClipMlpModel(BaseScorer):
     def _get_score_tag(self, score: float) -> str:
         """スコアからタグを生成します。"""
         return f"{self.config.get('score_prefix')}score_{int(score)}"
-
-    def name(self) -> str:
-        """CLIP+MLPモデルの表示名を返します。
-
-        Returns:
-            str: モデルの表示名。
-        """
-        return f"CLIP+MLP ({self.model_name})"
 
 
 class ClipClassifierModel(BaseScorer):
@@ -411,15 +397,8 @@ class ClipClassifierModel(BaseScorer):
             image_embedding = self.preprocess(image)
             tensor_input = self._prepare_tensor(image_embedding)
             raw_score = self.model["model"](tensor_input).item()
+            self.logger.debug(f"モデル '{self.model_name}' に処理された生の出力結果: {raw_score}")
             calculated_score = self._calculate_score(raw_score)
             score_tag = self._get_score_tag(calculated_score)
             results.append(self._generate_result(raw_score, score_tag))
         return results
-
-    def name(self) -> str:
-        """CLIP+Classifierモデルの表示名を返します。
-
-        Returns:
-            str: モデルの表示名。
-        """
-        return f"CLIP+Classifier ({self.model_name})"

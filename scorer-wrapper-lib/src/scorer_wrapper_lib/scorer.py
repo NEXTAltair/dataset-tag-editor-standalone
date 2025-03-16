@@ -1,15 +1,18 @@
+import logging
 from typing import Any
 
 from PIL import Image
 
-from .scorer_registry import get_registry
+from .scorer_registry import get_cls_obj_registry
 
-_LOADED_SCORERS: dict[str, Any] = {}
+logger = logging.getLogger(__name__)
+
+_MODEL_INSTANCE_REGISTRY: dict[str, Any] = {}
 
 
 def _create_scorer_instance(model_name: str) -> Any:
     """
-    _LOADED_SCORERSに登録されているモデルに対応したクラスを取得し、
+    _MODEL_INSTANCE_REGISTRYに登録されているモデルに対応したクラスを取得し、
     モデル名を引数にモデルインスタンスを生成
 
     Args:
@@ -18,9 +21,13 @@ def _create_scorer_instance(model_name: str) -> Any:
     Returns:
         BaseScorer: スコアラーのインスタンス。
     """
-    registry = get_registry()
+    registry = get_cls_obj_registry()
     scorer_class = registry[model_name]
-    return scorer_class(model_name=model_name)
+    instance = scorer_class(model_name=model_name)
+    logger.debug(
+        f"モデル '{model_name}' の新しいインスタンスを作成しました (クラス: {scorer_class.__name__})"
+    )
+    return instance
 
 
 def get_scorer_instance(model_name: str) -> Any:
@@ -38,11 +45,12 @@ def get_scorer_instance(model_name: str) -> Any:
     Raises:
         ValueError: 指定されたモデル名が設定に存在しない場合
     """
-    if model_name in _LOADED_SCORERS:
-        return _LOADED_SCORERS[model_name]
+    if model_name in _MODEL_INSTANCE_REGISTRY:
+        logger.debug(f"モデル '{model_name}' はキャッシュから取得されました")
+        return _MODEL_INSTANCE_REGISTRY[model_name]
 
     instance = _create_scorer_instance(model_name)
-    _LOADED_SCORERS[model_name] = instance
+    _MODEL_INSTANCE_REGISTRY[model_name] = instance
     return instance
 
 
@@ -52,6 +60,7 @@ def _evaluate_model(scorer: Any, images: list[Image.Image]) -> list[dict[str, An
     """
     scorer.load_or_restore_model()  # ロードまたは復元
     results: list[dict[str, Any]] = scorer.predict(images)  # 予測結果を取得
+    logger.debug(f"モデル '{scorer.model_name}' の評価結果を統一した形式に変換結果: {results}")
     scorer.cache_and_release_model()  # 終了後にリソース解放
     return results
 
@@ -80,14 +89,16 @@ def evaluate(images: list[Image.Image], model_list: list[str]) -> dict[str, list
         }
         ※各リストの要素は画像ごとの評価結果（辞書）で、リストの長さは入力画像数と一致
     """
+    logger.info(f"{len(images)}枚の画像を{len(model_list)}個のモデルで評価します: {model_list}")
     results_by_model: dict[str, list[dict[str, Any]]] = {}
 
-    for name in model_list:
-        scorer = get_scorer_instance(name)
+    for model_name in model_list:
+        logger.info(f"モデル '{model_name}' での評価を開始します")
+        scorer = get_scorer_instance(model_name)
         results = _evaluate_model(scorer, images)
         # 結果をモデルごとに集約
         for result in results:
-            model_name = result["model_name"]
             results_by_model.setdefault(model_name, []).append(result)
+        logger.info(f"モデル '{model_name}' の評価が完了しました")
 
     return results_by_model

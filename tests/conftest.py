@@ -3,7 +3,6 @@
 このモジュールでは、複数のテストファイルで使用される共通のfixtureを定義します。
 """
 
-from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image
@@ -11,22 +10,11 @@ import pytest
 from pytest_bdd import given, parsers
 
 
-# resourcesディレクトリのパス
-resources_dir = Path(__file__).parent / "resources"
-
-
-# 基本的なデータ準備 (pytestフィクスチャ)
-@pytest.fixture
-def single_image() -> list[Image.Image]:
-    image_path = resources_dir / "img" / "1_img" / "file01.webp"
-    return [Image.open(image_path)]
-
-
-@pytest.fixture
-def images() -> list[Image.Image]:
-    image_path1 = resources_dir / "img" / "1_img" / "file01.webp"
-    image_path2 = resources_dir / "img" / "1_img" / "file02.webp"
-    return [Image.open(image_path1), Image.open(image_path2)]
+# 警告を無視するための設定
+def pytest_configure(config):
+    """pytestの設定を構成する"""
+    # 特定の警告を無視
+    config.addinivalue_line("filterwarnings", "ignore::FutureWarning:transformers.*")
 
 
 @pytest.fixture

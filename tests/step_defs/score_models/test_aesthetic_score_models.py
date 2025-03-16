@@ -10,11 +10,7 @@ from scorer_wrapper_lib.score_models.aesthetic_shadow import (
 )
 from scorer_wrapper_lib.score_models.cafe_aesthetic import CafePredictor
 
-# 絶対パスを使用してfeatureファイルを参照
-# VSCode拡張との互換性のために明示的なパスを指定している
-# feature_file = Path(__file__).parent.parent / "features" / "score_models" / "aesthetic_score_models.feature"
-# scenarios(str(feature_file))
-scenarios("tests/features")
+scenarios("../../features/score_models/aesthetic_score_models.feature")
 
 
 # 共通のフィクスチャ

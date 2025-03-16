@@ -7,35 +7,24 @@ import pytest
 from pytest_bdd import given, then, when, parsers, scenarios
 
 from scorer_wrapper_lib.scorer import (
+    _MODEL_INSTANCE_REGISTRY,
     _create_scorer_instance,
     get_scorer_instance,
     evaluate,
-    _LOADED_SCORERS,
 )
 
 scenarios("../features/scorer.feature")
 
 
-@pytest.fixture(autouse=True)
-def clean_cache():
-    # テスト前に空にする
-    _LOADED_SCORERS.clear()
-
-    yield  # テスト実行
-
-    # テスト後も空にしておく（次のテストのため）
-    _LOADED_SCORERS.clear()
-
-
 @pytest.fixture
 def mock_registry():
-    """get_registryのモック化のみを行うシンプルなフィクスチャ"""
+    """get_cls_obj_registry"""
     registry = {}
 
-    # get_registryのモック化
-    patcher = patch("scorer_wrapper_lib.scorer.get_registry")
-    mock_get_registry = patcher.start()
-    mock_get_registry.return_value = registry
+    # get_cls_obj_registryのモック
+    patcher = patch("scorer_wrapper_lib.scorer.get_cls_obj_registry")
+    mock_get_cls_obj_registry = patcher.start()
+    mock_get_cls_obj_registry.return_value = registry
 
     def register(model_name, predict_results=None):
         """モデルの登録"""
@@ -61,9 +50,9 @@ def mock_registry():
 
 @given(parsers.parse("{model_name} はまだキャッシュされていない"))
 def given_model_not_cached(target_model_list):
-    # すでにインポート済みの_LOADED_SCORERSを使用
-    if target_model_list in _LOADED_SCORERS:
-        del _LOADED_SCORERS[target_model_list]
+    # すでにインポート済みの_MODEL_INSTANCE_REGISTRYを使用
+    if target_model_list in _MODEL_INSTANCE_REGISTRY:
+        del _MODEL_INSTANCE_REGISTRY[target_model_list]
 
 
 @given(
@@ -72,14 +61,14 @@ def given_model_not_cached(target_model_list):
 )
 def given_model_already_cached(target_model_list, mock_registry):
     # キャッシュがクリアされていることを確認
-    if target_model_list in _LOADED_SCORERS:
-        del _LOADED_SCORERS[target_model_list]
+    if target_model_list in _MODEL_INSTANCE_REGISTRY:
+        del _MODEL_INSTANCE_REGISTRY[target_model_list]
 
     # モックファクトリからインスタンス作成
     mock_instance = mock_registry(target_model_list)
 
     # キャッシュに追加
-    _LOADED_SCORERS[target_model_list] = mock_instance
+    _MODEL_INSTANCE_REGISTRY[target_model_list] = mock_instance
     return mock_instance
 
 
@@ -210,14 +199,18 @@ def then_both_models_are_cached(initialized_models):
     first_model = initialized_models["first_model"]
     second_model = initialized_models["second_model"]
 
-    assert first_model in _LOADED_SCORERS, f"{first_model}がキャッシュされていない"
-    assert second_model in _LOADED_SCORERS, f"{second_model}がキャッシュされていない"
-    assert _LOADED_SCORERS[first_model] is initialized_models["first_instance"], (
-        "キャッシュされたインスタンスが一致しない"
+    assert first_model in _MODEL_INSTANCE_REGISTRY, (
+        f"{first_model}がキャッシュされていない"
     )
-    assert _LOADED_SCORERS[second_model] is initialized_models["second_instance"], (
-        "キャッシュされたインスタンスが一致しない"
+    assert second_model in _MODEL_INSTANCE_REGISTRY, (
+        f"{second_model}がキャッシュされていない"
     )
+    assert (
+        _MODEL_INSTANCE_REGISTRY[first_model] is initialized_models["first_instance"]
+    ), "キャッシュされたインスタンスが一致しない"
+    assert (
+        _MODEL_INSTANCE_REGISTRY[second_model] is initialized_models["second_instance"]
+    ), "キャッシュされたインスタンスが一致しない"
 
 
 @then(parsers.parse("辞書のキーが {model_name} の各モデル名と一致することを確認する"))
@@ -262,7 +255,7 @@ def test_get_scorer_instance_caching(mock_registry):
 
     # 1回目の呼び出し
     first = get_scorer_instance(model_name)
-    assert model_name in _LOADED_SCORERS
+    assert model_name in _MODEL_INSTANCE_REGISTRY
 
     # 2回目の呼び出し
     second = get_scorer_instance(model_name)

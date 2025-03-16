@@ -8,7 +8,7 @@ from unittest.mock import patch
 from pytest_bdd import given, when, then, scenarios
 from scorer_wrapper_lib.scorer_registry import (
     register_scorers,
-    get_registry,
+    get_cls_obj_registry,
 )
 
 # シナリオファイルの読み込み
@@ -78,7 +78,7 @@ def when_available_model_names_list_obtained(test_registry):
 
 @when("レジストリから特定のモデルを取得する", target_fixture="test_specific_model")
 def when_specific_model_obtained_from_registry(test_registry):
-    registry = get_registry()
+    registry = get_cls_obj_registry()
     # レジストリから最初のモデルを取得
     if registry:
         model_name = next(iter(registry.keys()))

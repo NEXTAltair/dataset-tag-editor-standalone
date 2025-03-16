@@ -10,10 +10,10 @@ from .core.base import BaseScorer
 from .core.utils import load_model_config
 
 T = TypeVar("T", bound=BaseScorer)
-ScorerClass = Type[BaseScorer]
+ModelClass = Type[BaseScorer]
 
-_MODEL_CLASS_OBJ_REGISTRY: dict[str, ScorerClass] = {}  # モデル名 → クラスオブジェクト
-logger = logging.getLogger("scorer_wrapper_lib")
+_MODEL_CLASS_OBJ_REGISTRY: dict[str, ModelClass] = {}  # モデル名 → クラスオブジェクト
+logger = logging.getLogger(__name__)
 
 
 def list_module_files(directory: str) -> list[Path]:
@@ -47,10 +47,10 @@ def recursive_subclasses(cls: Type[T]) -> set[Type[T]]:
     return subclasses
 
 
-def gather_available_classes(directory: str) -> dict[str, ScorerClass]:
+def gather_available_classes(directory: str) -> dict[str, ModelClass]:
     """score_models 内の全モジュールから、BaseScorer のサブクラスまたは
     predict() メソッドを持つクラスを抽出して返す"""
-    available: dict[str, ScorerClass] = {}
+    available: dict[str, ModelClass] = {}
     module_files = list_module_files(directory)
     for module_file in module_files:
         module = import_module_from_file(module_file, "scorer_wrapper_lib.score_models")
@@ -66,7 +66,7 @@ def gather_available_classes(directory: str) -> dict[str, ScorerClass]:
     return available
 
 
-def register_scorers() -> dict[str, ScorerClass]:
+def register_scorers() -> dict[str, ModelClass]:
     """利用可能なスコアラークラスを登録"""
     # 開始ログ
     caller = traceback.extract_stack()[-2]
@@ -93,18 +93,21 @@ def register_scorers() -> dict[str, ScorerClass]:
             _MODEL_CLASS_OBJ_REGISTRY[model_name] = available[desired_class]
             logger.debug(f"モデル登録: {model_name} → {desired_class}")
         else:
-            logger.error(f"{model_name}が使用する{desired_class}は定義されていません")
+            logger.error(
+                f"モデル '{model_name}' で指定されたクラス '{desired_class}' は、'score_models' ディレクトリ内に定義されていません。クラス名が正しいか、または 'score_models' ディレクトリにクラスファイルが存在するか確認してください。"
+            )
 
     logger.debug(f"register_scorers完了: 最終レジストリ状態: {list(_MODEL_CLASS_OBJ_REGISTRY.keys())}")
     return _MODEL_CLASS_OBJ_REGISTRY
 
 
-def get_registry() -> dict[str, ScorerClass]:
-    """スコアラークラスのレジストリを取得"""
+def get_cls_obj_registry() -> dict[str, ModelClass]:
+    """モデルクラスオブジェクトのレジストリを取得"""
     return _MODEL_CLASS_OBJ_REGISTRY
 
 
 def list_available_scorers() -> list[str]:
+    # TODO: スコアラー以外にも対応したら関数名は変更する
     """
     register_scorersで登録された利用可能なスコアラーモデル名のリストを返す
 

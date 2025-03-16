@@ -53,7 +53,8 @@ class MLP(nn.Module):
         Returns:
             torch.Tensor: 処理された出力テンソル
         """
-        return self.layers(x)
+        output: torch.Tensor = self.layers(x)
+        return output
 
 
 class Classifier(torch.nn.Module):
@@ -92,7 +93,9 @@ class Classifier(torch.nn.Module):
 
 
 # image_embeddings 関数 (WaifuAestheticで使用されているものを流用)
-def image_embeddings(image: Image.Image, model: CLIPModel, processor: CLIPProcessor) -> np.ndarray:
+def image_embeddings(
+    image: Image.Image, model: CLIPModel, processor: CLIPProcessor
+) -> np.ndarray[Any, np.dtype[Any]]:
     """画像からCLIPモデルを使用して埋め込みベクトルを生成します。
 
     Args:
@@ -107,7 +110,8 @@ def image_embeddings(image: Image.Image, model: CLIPModel, processor: CLIPProces
     inputs = inputs.to(model.device)
     result = model.get_image_features(pixel_values=inputs).cpu().detach().numpy()
     # 正規化された埋め込みを返す
-    return result / np.linalg.norm(result)
+    normalized_result: np.ndarray[Any, np.dtype[Any]] = result / np.linalg.norm(result)
+    return normalized_result
 
 
 def create_clip_mlp_model(config: dict[str, Any]) -> dict[str, Any]:
@@ -141,7 +145,7 @@ def create_clip_mlp_model(config: dict[str, Any]) -> dict[str, Any]:
     try:
         model.load_state_dict(torch.load(file), strict=False)  # strict=Falseで緩和条件ロード
     except RuntimeError as e:
-        logger.warning(f"モデルロード中にエラーが発生しました: {e}")
+        logger.warning(f"CLIP MLPモデルの重みロード中にエラーが発生しました: {e}")
 
     model = model.to(config["device"])
 
@@ -174,7 +178,10 @@ def create_clip_classifier_model(config: dict[str, Any]) -> dict[str, Any]:
     # モデルの重みをロード
     file = utils.load_file(config["model_path"])
     model = Classifier(clip_config.projection_dim, 256, 1)  # Classifierを使用
-    model.load_state_dict(torch.load(file))
+    try:
+        model.load_state_dict(torch.load(file))
+    except RuntimeError as e:
+        logger.warning(f"CLIP Classifierモデルの重みロード中にエラーが発生しました: {e}")
     model = model.to(config["device"])
 
     return {"model": model, "processor": clip_processor, "clip_model": clip_model}
