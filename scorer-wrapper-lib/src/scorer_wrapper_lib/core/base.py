@@ -301,13 +301,18 @@ class PipelineModel(BaseScorer):
         pass
 
 
-class ClipMlpModel(BaseScorer):
-    def __init__(self, model_name: str):
-        """ClipMlpModel を初期化します。
+class ClipModel(BaseScorer):
+    """CLIPモデルを使用するスコアラークラス。
 
-        Args:
-            model_name (str): モデルの名前。
-        """
+    任意のCLIPモデルと組み合わせたスコアリングモデルを扱います。
+    activation_typeとfinal_activation_typeの設定に基づいて
+    活性化関数の有無を動的に決定します。
+
+    Args:
+        model_name (str): モデルの名前
+    """
+
+    def __init__(self, model_name: str):
         super().__init__(model_name=model_name)
 
     def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
@@ -324,60 +329,39 @@ class ClipMlpModel(BaseScorer):
 
         results = []
         for image in images:
+            # 画像の特徴量抽出
             image_embedding = self.preprocess(image)
             tensor_input = self._prepare_tensor(image_embedding)
+
+            # モデル推論
             raw_score = self.model["model"](tensor_input).item()
             self.logger.debug(f"モデル '{self.model_name}' に処理された生の出力結果: {raw_score}")
+
+            # スコア計算とタグ生成
             calculated_score = self._calculate_score(raw_score)
             score_tag = self._get_score_tag(calculated_score)
             results.append(self._generate_result(raw_score, score_tag))
+
         return results
 
     def _calculate_score(self, raw_output: Any) -> float:
-        """モデルの生出力からスコアを計算します。"""
-        return float(raw_output)
-
-    def _get_score_tag(self, score: float) -> str:
-        """スコアからタグを生成します。"""
-        return f"{self.config.get('score_prefix')}score_{int(score)}"
-
-
-class ClipClassifierModel(BaseScorer):
-    def __init__(self, model_name: str):
-        """ClipClassifierModel を初期化します。
+        """モデルの生出力からスコアを計算します。
 
         Args:
-            model_name (str): モデルの名前。
-        """
-        super().__init__(model_name=model_name)
-
-    def _calculate_score(self, raw_output: Any) -> float:
-        """モデルの生出力からスコアを計算します。"""
-        return float(raw_output)
-
-    def _get_score_tag(self, score: float) -> str:
-        """スコアからタグを生成します。"""
-        return f"{self.config.get('score_prefix')}score_{int(score)}"
-
-    def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-        """CLIP+Classifierモデルで画像リストの評価結果を予測します。
-
-        Args:
-            images (list[Image.Image]): 評価対象の画像リスト。
+            raw_output: モデルからの生出力。
 
         Returns:
-            list[dict]: 評価結果の辞書リスト。
+            float: 計算されたスコア。
         """
-        if not self.is_model_loaded():
-            self.load_or_restore_model()
+        return float(raw_output)
 
-        results = []
-        for image in images:
-            image_embedding = self.preprocess(image)
-            tensor_input = self._prepare_tensor(image_embedding)
-            raw_score = self.model["model"](tensor_input).item()
-            self.logger.debug(f"モデル '{self.model_name}' に処理された生の出力結果: {raw_score}")
-            calculated_score = self._calculate_score(raw_score)
-            score_tag = self._get_score_tag(calculated_score)
-            results.append(self._generate_result(raw_score, score_tag))
-        return results
+    def _get_score_tag(self, score: float) -> str:
+        """スコアからタグを生成します。
+
+        Args:
+            score (float): 計算されたスコア。
+
+        Returns:
+            str: 生成されたスコアタグ。
+        """
+        return f"{self.config.get('score_prefix', '')}score_{int(score)}"

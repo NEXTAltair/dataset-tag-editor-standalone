@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from PIL import Image
@@ -5,7 +6,7 @@ from PIL import Image
 from .core.utils import setup_logger
 
 # アプリケーション全体のロガー設定
-setup_logger("scorer_wrapper_lib")
+setup_logger("scorer_wrapper_lib", level=logging.INFO)
 
 __all__ = ["evaluate", "list_available_models"]
 
