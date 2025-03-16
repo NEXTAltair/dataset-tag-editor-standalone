@@ -61,7 +61,7 @@ def _evaluate_model(scorer: Any, images: list[Image.Image]) -> list[dict[str, An
     scorer.load_or_restore_model()  # ロードまたは復元
     results: list[dict[str, Any]] = scorer.predict(images)  # 予測結果を取得
     logger.debug(f"モデル '{scorer.model_name}' の評価結果を統一した形式に変換結果: {results}")
-    scorer.cache_and_release_model()  # 終了後にリソース解放
+    scorer.cache_to_main_memory()
     return results
 
 
@@ -102,3 +102,11 @@ def evaluate(images: list[Image.Image], model_list: list[str]) -> dict[str, list
         logger.info(f"モデル '{model_name}' の評価が完了しました")
 
     return results_by_model
+
+
+def release_resources() -> None:
+    """
+    モデルの握ったリソースを解放。
+    """
+    for scorer in _MODEL_INSTANCE_REGISTRY.values():
+        scorer.release_resources()

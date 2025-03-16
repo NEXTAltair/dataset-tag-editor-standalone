@@ -22,9 +22,7 @@ class BaseScorer(ABC):
         self.config: dict[str, Any] = load_model_config()[model_name]
         self.device = self.config["device"]
         self.model: dict[str, Any] = {}
-        self.is_model_loaded = (
-            False  # モデル構造のロード状態以外に重みのロード状態を管理するフラグも必要か?
-        )
+        self.model_state = "unloaded"  # 初期状態: モデル未ロード
         self.logger = logging.getLogger(__name__)
 
     def _load_model(self) -> None:
@@ -35,26 +33,27 @@ class BaseScorer(ABC):
             Exception: モデル読み込み時に発生した例外をそのまま伝播します。
         """
         self.model = create_model(self.config)
-        self.is_model_loaded = True
+        self.model_state = f"on_{self.device}"  # "on_cuda" または "on_cpu"
 
     def load_or_restore_model(self) -> None:
         """
-        モデルが読み込まれていない場合は読み込み、読み込まれている場合はメモリから復元します。
+        モデルの状態に基づいて、必要な場合のみロードまたは復元します。
         """
-        if not self.is_model_loaded:
-            # キャッシュキーをログに出力して確認
-            logger.debug(f"モデル '{self.model_name}' をロードします")
+        if not self.is_model_loaded():
+            # モデルが読み込まれていない場合
+            self.logger.debug(f"モデル '{self.model_name}' をロードします")
             self._load_model()
-        else:
-            logger.debug(f"モデル '{self.model_name}' をメモリから復元します")
-            self.restore_from_main_memory()
+        elif self.needs_gpu_restoration():
+            # CPUにキャッシュされていて、GPUに戻す必要がある場合
+            self.logger.debug(f"モデル '{self.model_name}' をGPUに復元します")
+            self._restore_from_main_memory()
 
     def _release_model(self) -> None:
         """
         モデルを_LOADED_SCORERS から削除 メモリから解放し、GPUキャッシュをクリアします。
         """
         if self.model is not None:
-            self.is_model_loaded = False
+            self.model_state = "unloaded"  # モデル解放
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
@@ -63,7 +62,7 @@ class BaseScorer(ABC):
 
         モデルのすべてのコンポーネントをGPUからCPUメモリに移動します。
         これにより、GPU上のメモリは解放されますが、モデル自体は保持されるため、
-        後で`restore_from_main_memory()`を呼び出して再利用できます。
+        後で`_restore_from_main_memory()`を呼び出して再利用できます。
 
         主な用途:
         - 一時的にGPUメモリを解放したい場合
@@ -74,11 +73,6 @@ class BaseScorer(ABC):
             このメソッドはモデルを破棄しません。モデルを完全に解放するには
             `release_resources()`を使用してください。
         """
-        if not self.is_model_loaded:
-            error_msg = f"[{self.__class__.__name__}.cache_to_main_memory] モデルが初期化されていません。"
-            self.logger.warning(error_msg)
-            return
-
         # 辞書内の各要素に対して処理
         for component_name, component in self.model.items():
             if component_name == "pipeline":
@@ -102,25 +96,19 @@ class BaseScorer(ABC):
         self.logger.info(
             f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリにキャッシュしました。"
         )
+        self.model_state = "on_cpu"
 
-    def restore_from_main_memory(self) -> None:
-        """CPUにキャッシュされたモデルを指定デバイス（通常はGPU）に復元します。
+    def _restore_from_main_memory(self) -> None:
+        """CPUにキャッシュされたモデルを指定デバイスCUDAに復元します。
 
         `cache_to_main_memory()`を使用してCPUに移動したモデルを、
-        設定されたデバイス（self.device、通常はGPU）に戻します。
+        設定されたデバイスself.device、CUDAに戻します。
         これにより、モデルは再び高速推論の準備が整います。
 
         主な用途:
         - キャッシュしておいたモデルを再度使用する前
-        - GPU上での処理が必要になった時
+        - CUDA上での処理が必要になった時
         """
-        if self.model is None:
-            error_msg = (
-                f"[{self.__class__.__name__}.restore_from_main_memory] モデルが初期化されていません。"
-            )
-            self.logger.warning(error_msg)
-            return
-
         # 辞書内の各要素に対して処理
         for component_name, component in self.model.items():
             if component_name == "pipeline":
@@ -140,30 +128,6 @@ class BaseScorer(ABC):
         self.logger.info(
             f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリから復元しました。"
         )
-
-    def cache_and_release_model(self) -> None:
-        """モデルをCPUに保存してから、すべてのリソースを完全に解放します。
-
-        このメソッドは2段階の処理を行います:
-        1. `cache_to_main_memory()`を呼び出して、モデルをCPUに移動
-           （これによりGPUメモリが解放されます）
-        2. `release_resources()`を呼び出して、モデル自体への参照を解放
-           （これによりCPUメモリからもモデルが解放されます）
-
-        主な用途:
-        - モデルを完全に終了する前の最終処理
-        - メモリ使用量を最大限に削減する必要がある場合
-        - 長時間モデルを使用しない場合
-
-        Note:
-            このメソッドを呼び出した後は、モデルを再度使用するには
-            `load_or_restore_model()`を呼び出してモデルを再読み込みする必要があります。
-        """
-        # OPTIMIZE: この実装は効率的ではありません。モデルを完全に解放するだけであれば、
-        # CPUにキャッシュする中間ステップは不要です。直接release_resourcesを呼び出すか、
-        # GPUメモリを確実に解放するための条件付き実装に修正すべきです。
-        self.cache_to_main_memory()
-        self.release_resources()
 
     def release_resources(self) -> None:
         """モデルへの参照を解放し、メモリリソースを完全に解放します。
@@ -202,8 +166,6 @@ class BaseScorer(ABC):
         Returns:
             torch.Tensor: 前処理済みのテンソル。
         """
-        if not self.is_model_loaded:
-            self.load_or_restore_model()
         return torch.tensor(image_embeddings(image, self.model["clip_model"], self.model["processor"]))
 
     def _prepare_tensor(self, model_output: Any) -> torch.Tensor:
@@ -261,6 +223,22 @@ class BaseScorer(ABC):
             str: 生成されたスコアタグ。
         """
         pass
+
+    def is_model_loaded(self) -> bool:
+        """モデルがロード済みかどうかを確認します。"""
+        return self.model_state != "unloaded"
+
+    def is_on_gpu(self) -> bool:
+        """モデルがGPU上にあるかどうかを確認します。"""
+        return self.model_state == f"on_{self.device}" and "cuda" in self.device
+
+    def is_on_cpu(self) -> bool:
+        """モデルがCPU上にあるかどうかを確認します。"""
+        return self.model_state == "on_cpu"
+
+    def needs_gpu_restoration(self) -> bool:
+        """モデルがCPUにあり、GPUに戻す必要があるかを確認します。"""
+        return self.is_on_cpu() and "cuda" in self.device
 
 
 class PipelineModel(BaseScorer):
@@ -322,6 +300,7 @@ class PipelineModel(BaseScorer):
         """
         pass
 
+
 class ClipMlpModel(BaseScorer):
     def __init__(self, model_name: str):
         """ClipMlpModel を初期化します。
@@ -340,7 +319,7 @@ class ClipMlpModel(BaseScorer):
         Returns:
             list[dict]: 評価結果の辞書リスト。
         """
-        if not self.is_model_loaded:
+        if not self.is_model_loaded():
             self.load_or_restore_model()
 
         results = []
@@ -389,7 +368,7 @@ class ClipClassifierModel(BaseScorer):
         Returns:
             list[dict]: 評価結果の辞書リスト。
         """
-        if not self.is_model_loaded:
+        if not self.is_model_loaded():
             self.load_or_restore_model()
 
         results = []

@@ -182,8 +182,8 @@ def then_all_models_instantiated(
         assert hasattr(model_instance, "predict"), (
             f"モデル '{model_name}' に predict メソッドがありません"
         )
-        assert hasattr(model_instance, "cache_and_release_model"), (
-            f"モデル '{model_name}' に cache_and_release_model メソッドがありません"
+        assert hasattr(model_instance, "cache_to_main_memory"), (
+            f"モデル '{model_name}' に cache_to_main_memory メソッドがありません"
         )
 
 
