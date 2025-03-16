@@ -5,7 +5,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
-import toml
+import toml  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _download_from_url(url: str) -> Path:
         Path: ダウンロードされたファイルのローカルパス
     """
     # ダウンロード先フォルダを設定・作成
-    cache_dir = Path(__file__).parent / "models"
+    cache_dir = Path("models")
     cache_dir.mkdir(exist_ok=True)
 
     # キャッシュチェック
@@ -151,8 +151,10 @@ def load_model_config() -> dict[str, dict[str, Any]]:
     Returns:
         dict[str, dict[str, Any]]: model_nameをキーとしたモデルごとのパラメーターの辞書
     """
-    config_path = Path(__file__).parent.parent.parent.parent / "config" / "models.toml"
+    config_path = Path("config") / "models.toml"
+    # ファイルの内容を読み込む
     config_data = toml.load(config_path)
+
     if not isinstance(config_data, dict):
-        raise TypeError("Config data must be a dictionary")
+        raise TypeError("構成データは辞書である必要があります")
     return dict(config_data)
