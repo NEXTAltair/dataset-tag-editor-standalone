@@ -32,20 +32,22 @@ class = "CafePredictor"
 # class = "CafePredictor"
 
 [ImprovedAesthetic]
-type = "clip_mlp"
+type = "clip"
 model_path = "https://github.com/christophschuhmann/improved-aesthetic-predictor/raw/main/sac+logos+ava1-l14-linearMSE.pth" #ローカルに保存している場合はパスを指定
 base_model = "openai/clip-vit-large-patch14" # CLIPのベースモデル
-device = "cpu"
+device = "cuda"
 score_prefix = "[IAP]"
-class = "ClipMlpModel"
+class = "ClipModel"
 
 [WaifuAesthetic]
-type = "clip_classifier"
+type = "clip"
 model_path = "https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/models/aes-B32-v0.pth"
 base_model = "openai/clip-vit-base-patch32"
-device = "cpu"
+device = "cuda"
 score_prefix = "[WAIFU]"
-class = "ClipClassifierModel"
+class = "ClipModel"
+activation_type = "ReLU"        # 指定あり → ReLU活性化関数を使用
+final_activation_type = "Sigmoid"  # 指定あり → 最終層にSigmoid活性化関数を使用
 
 # [ImageReward] #TODO: 実装がクソややこしいので後回し `pip install image-reward` でライブラリとして導入すると依存関係の互換性で問題が出る
 # BLIPの開発元のライブラリ `salesforce-lavis`は Rustのビルドツールを要求されるからユーザーにわざわざ入れさせたくない
