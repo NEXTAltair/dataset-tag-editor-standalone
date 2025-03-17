@@ -36,8 +36,6 @@ dev = [
 
 [tool.ruff]
 line-length = 108
-target-version = "py312"
-select = ["E", "F", "W"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "W", "C90"]
@@ -59,4 +57,5 @@ exclude_lines = [
     "print",
     "logger.",
     "except",
+    "@abstractmethod",
 ]

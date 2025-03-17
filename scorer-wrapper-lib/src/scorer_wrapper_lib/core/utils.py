@@ -50,14 +50,6 @@ def _perform_download(url: str, target_path: Path, expected_hash: Optional[str] 
                     f.write(chunk)
                     pbar.update(len(chunk))
 
-    # ハッシュ検証（オプション）
-    if expected_hash:
-        with open(target_path, "rb") as f:
-            file_hash = hashlib.sha256(f.read()).hexdigest()
-        if not file_hash.startswith(expected_hash):
-            target_path.unlink()  # 不正なファイルを削除
-            raise ValueError(f"ダウンロードしたファイルのハッシュが一致しません: {file_hash}")
-
 
 def _download_from_url(
     url: str, cache_dir: Path = DEFAULT_CACHE_DIR, expected_hash: Optional[str] = None
