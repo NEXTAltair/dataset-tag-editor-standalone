@@ -1,6 +1,7 @@
 from pathlib import Path
 import logging
 import toml
+import time
 from pytest_bdd import given, when, then, parsers, scenarios
 import pytest
 
@@ -48,6 +49,25 @@ def given_app_is_running():
 )
 def given_model_parameters_defined():
     return Path("config/models.toml")
+
+
+@given(
+    "ユーザーがURLからダウンロードしたファイルはすでにローカルに存在する",
+    target_fixture="cached_file_info",
+)
+def given_downloaded_file_exists():
+    # ダウンロードしたファイルをローカルに保存
+    test_url = "https://raw.githubusercontent.com/NEXTAltair/dataset-tag-editor-standalone/refs/heads/refactor/unified-download/tests/resources/txt/test_remote_file.txt"
+    result_path = load_file(test_url)
+
+    # ファイルパスと最終更新時刻を記録
+    file_path = Path(result_path)
+    file_mtime = file_path.stat().st_mtime
+
+    # テスト環境によっては時間差が小さすぎると検出できない場合があるため、少し待機
+    time.sleep(0.5)
+
+    return {"path": result_path, "mtime": file_mtime}
 
 
 @when(
@@ -102,6 +122,18 @@ def then_system_returns_local_path(source_url_or_path):
 
     # 返されたパスが実際に存在するファイルを指していることを確認
     assert Path(source_url_or_path).exists()
+
+
+@then("ファイルは新規にダウンロードされない")
+def then_file_is_not_downloaded_again(cached_file_info, source_url_or_path):
+    # キャッシュされたファイルと現在のファイルが同じであることを確認
+    assert cached_file_info["path"] == source_url_or_path
+
+    # ファイルの最終更新時刻が変わっていないことを確認（ダウンロードされていない証拠）
+    current_mtime = Path(source_url_or_path).stat().st_mtime
+    assert current_mtime == cached_file_info["mtime"], (
+        "ファイルが再ダウンロードされました（更新時刻が変更されています）"
+    )
 
 
 @then("その操作の詳細が適切にログに記録される")

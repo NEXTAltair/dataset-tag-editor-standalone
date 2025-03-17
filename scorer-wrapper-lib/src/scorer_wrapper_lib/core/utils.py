@@ -1,86 +1,117 @@
+import hashlib
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 import requests
-import toml  # type: ignore
+import toml
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
 
+CONFIG_TOML = Path("config") / "models.toml"
+LOG_FILE = Path("logs/scorer_wrapper_lib.log")
+DEFAULT_CACHE_DIR = Path("models")
+DEFAULT_TIMEOUT = 30
+
+
+def _get_cache_path(url: str, cache_dir: Path) -> Path:
+    """URLからキャッシュファイルパスを生成する"""
+    filename = Path(urlparse(url).path).name
+    if not filename or len(filename) < 5:
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        extension = Path(urlparse(url).path).suffix
+        filename = f"{url_hash}{extension}" if extension else f"{url_hash}.bin"
+    return cache_dir / filename
+
+
 def _is_cached(url: str, cache_dir: Path) -> tuple[bool, Path]:
     """URLに対応するファイルがキャッシュに存在するか確認する"""
-    filename = Path(urlparse(url).path).name
-    local_path = cache_dir / filename
+    local_path = _get_cache_path(url, cache_dir)
     return local_path.is_file(), local_path
 
 
-def _perform_download(url: str, target_path: Path) -> None:
-    """実際のダウンロード処理を行う"""
+def _perform_download(url: str, target_path: Path, expected_hash: Optional[str] = None) -> None:
+    """実際のダウンロード処理を行う（進捗表示付き）"""
     logger.info(f"Downloading model from {url} to {target_path}")
-    response = requests.get(url, stream=True)
+    response = requests.get(url, stream=True, timeout=DEFAULT_TIMEOUT)
     response.raise_for_status()
+
+    # ファイルサイズを取得
+    total_size = int(response.headers.get("content-length", 0))
+
     with open(target_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
+        with tqdm(total=total_size, unit="B", unit_scale=True, desc=target_path.name) as pbar:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    pbar.update(len(chunk))
+
+    # ハッシュ検証（オプション）
+    if expected_hash:
+        with open(target_path, "rb") as f:
+            file_hash = hashlib.sha256(f.read()).hexdigest()
+        if not file_hash.startswith(expected_hash):
+            target_path.unlink()  # 不正なファイルを削除
+            raise ValueError(f"ダウンロードしたファイルのハッシュが一致しません: {file_hash}")
 
 
-def _download_from_url(url: str) -> Path:
+def _download_from_url(
+    url: str, cache_dir: Path = DEFAULT_CACHE_DIR, expected_hash: Optional[str] = None
+) -> Path:
     """
     URLからファイルをダウンロードし、キャッシュされたローカルパスを返します。
 
     Args:
         url: ダウンロードするファイルのURL
+        cache_dir: キャッシュディレクトリ（デフォルト: 設定ファイルから）
+        expected_hash: 期待されるSHA256ハッシュの先頭部分（オプション）
 
     Returns:
-        Path: ダウンロードされたファイルのローカルパス
+        Path: 絶対パスに変換されたパスオブジェクト
     """
-    # ダウンロード先フォルダを設定・作成
-    cache_dir = Path("models")
-    cache_dir.mkdir(exist_ok=True)
+    # ダウンロード先フォルダを作成
+    cache_dir.mkdir(exist_ok=True, parents=True)
 
     # キャッシュチェック
     is_cached, local_path = _is_cached(url, cache_dir)
 
     # キャッシュされていなければダウンロード
     if not is_cached:
-        _perform_download(url, local_path)
+        _perform_download(url, local_path, expected_hash)
 
-    return local_path
+    return local_path.resolve()
+
+
+@lru_cache(maxsize=128)
+def get_file_path(path_or_url: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> Path:
+    """パスまたはURLからローカルファイルパスを取得（結果をキャッシュ）"""
+    parsed = urlparse(path_or_url)
+
+    if parsed.scheme in ("http", "https"):
+        return _download_from_url(path_or_url, cache_dir)
+    else:
+        return _get_local_file_path(path_or_url)
 
 
 def _get_local_file_path(path: str) -> Path:
-    """
-    ローカルファイルパスを検証し、絶対パスを返します。
-
-    Args:
-        path: 検証するローカルファイルパス
-
-    Returns:
-        Path: 絶対パスに変換されたパスオブジェクト
-
-    Raises:
-        FileNotFoundError: 指定されたパスにファイルが存在しない場合
-    """
+    """ローカルファイルパスを検証し、絶対パスを返します。"""
     local_path = Path(path)
     if local_path.exists():
         return local_path.resolve()
     raise FileNotFoundError(f"ローカルファイル '{path}' が見つかりません")
 
 
-def load_file(path_or_url: str) -> str:
+def load_file(path_or_url: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> str:
     """
     指定されたパスまたはURLからファイルを取得し、ローカルパスを返します。
 
-    - 入力に "http://" または "https://" が含まれている場合は、直リンとしてストリーミングダウンロードします。
-    - 入力にスキームがない場合、ローカルファイルとして存在すればそのパスを返します。
-    - それ以外の場合はエラーを発生させます。
-
     Args:
         path_or_url: ローカルパスまたはURL
+        cache_dir: キャッシュディレクトリ（オプション）
 
     Returns:
         str: ローカルファイルへのパス
@@ -88,24 +119,17 @@ def load_file(path_or_url: str) -> str:
     Raises:
         RuntimeError: ファイルの取得に失敗した場合
     """
-    parsed = urlparse(path_or_url)
-
     try:
-        if parsed.scheme in ("http", "https"):
-            # URLからダウンロード
-            return str(_download_from_url(path_or_url))
-        else:
-            # ローカルパスを試す
-            try:
-                return str(_get_local_file_path(path_or_url))
-            except FileNotFoundError:
-                # ローカルファイルもURLでもない場合はエラー
-                raise RuntimeError(f"'{path_or_url}' は有効なローカルパスでもURLでもありません") from None
+        return str(get_file_path(path_or_url, cache_dir))
+    except requests.RequestException as e:
+        raise RuntimeError(f"URLからのダウンロードに失敗しました: {e}") from e
+    except FileNotFoundError as e:
+        raise RuntimeError(f"ローカルファイルが見つかりません: {e}") from e
     except Exception as e:
-        # 全ての例外を捕捉し、わかりやすいエラーメッセージを提供
         raise RuntimeError(
             f"'{path_or_url}' からのファイル取得に失敗しました。"
             "有効なローカルパス、または直接URLを指定してください。"
+            f"エラー詳細: {e}"
         ) from e
 
 
@@ -133,9 +157,8 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
         logger.addHandler(stream_handler)
 
         # ファイルにログを出力するハンドラ # encoding="utf-8"
-        log_file = Path("logs/scorer_wrapper_lib.log")
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file)
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(LOG_FILE)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
@@ -151,9 +174,8 @@ def load_model_config() -> dict[str, dict[str, Any]]:
     Returns:
         dict[str, dict[str, Any]]: model_nameをキーとしたモデルごとのパラメーターの辞書
     """
-    config_path = Path("config") / "models.toml"
     # ファイルの内容を読み込む
-    config_data = toml.load(config_path)
+    config_data = toml.load(CONFIG_TOML)
 
     if not isinstance(config_data, dict):
         raise TypeError("構成データは辞書である必要があります")
