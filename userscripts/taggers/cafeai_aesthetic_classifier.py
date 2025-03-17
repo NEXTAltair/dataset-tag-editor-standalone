@@ -14,7 +14,7 @@ BATCH_SIZE = 32
 class CafeAIAesthetic(Tagger):
     def load(self):
         self.pipe_aesthetic = pipeline("image-classification", "cafeai/cafe_aesthetic", device=devices.device, batch_size=BATCH_SIZE)
-    
+
     def unload(self):
         if not settings.current.interrogator_keep_in_memory:
             self.pipe_aesthetic = None
@@ -38,13 +38,17 @@ class CafeAIAesthetic(Tagger):
 
     def predict(self, image: Image.Image, threshold=None):
         data = self.pipe_aesthetic(image, top_k=2)
+        if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+            return (data, self._get_score(data))
         return self._get_score(data)
-    
+
     # Not neccesary method, just for a little efficient inference
     def predict_pipe(self, data: list[Image.Image], threshold=None):
         if data is None:
             return
         for out in self.pipe_aesthetic(data, batch_size=BATCH_SIZE):
+            if self._is_wrapper_call(): # ScorerWrapper経由の呼び出しの場合
+                yield (out, self._get_score(out))
             yield self._get_score(out)
 
     def name(self):

@@ -1,10 +1,23 @@
-# Byte-compiled / optimized / DLL files
+# Python関連
 __pycache__/
-.vscode/
+*.py[cod]
+*$py.class
+.coverage
+coverage.xml
+
+# 仮想環境
 venv/
-temp/
-models/
+.env
+
+# エディタ設定
+.vscode/
+.cursor/
+
+# OS生成ファイル
 .DS_Store
-config.json
-settings.json
-launch_user.bat
+
+# プロジェクト固有
+models/
+temp/
+logs/
+scorer-wrapper-lib/docs/

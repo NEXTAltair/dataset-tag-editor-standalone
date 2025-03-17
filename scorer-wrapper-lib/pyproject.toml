@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scorer-wrapper-lib"
+version = "0.1.0"
+description = "画像評価モデルのラッパーライブラリ"
+readme = "README.md"
+requires-python = ">=3.12.4"
+license = "MIT"
+authors = [{ name = "Your Name", email = "your.email@example.com" }]
+
+dependencies = [
+    "torch>=2.5.1",
+    "torchvision>=0.16.1",
+    "Pillow>=10.0.0",
+    "transformers>=4.27.4",
+    "numpy>=1.26.0",
+    "pytest-playwright",
+    "toml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-bdd>=8.0.0",
+    "pytest-xdist>=3.5.0",
+    "pytest-cov>=4.1.0",
+    "pytest-clarity>=1.0.1",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+    "types-requests>=2.32.0",
+]
+
+
+[tool.ruff]
+line-length = 108
+target-version = "py312"
+select = ["E", "F", "W"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "W", "C90"]
+ignore = ["D", "E501"]                     # E501を明示的に無視
+exclude = ["__pycache__", "venv", ".venv"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.coverage.run]
+omit = ["tests/*", "*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__ == __main__:",
+    "pass",
+    "print",
+    "logger.",
+    "except",
+]
