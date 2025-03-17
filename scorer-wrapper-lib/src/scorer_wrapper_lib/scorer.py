@@ -58,10 +58,8 @@ def _evaluate_model(scorer: Any, images: list[Image.Image]) -> list[dict[str, An
     """1モデル分の評価処理を実施します。
     ・モデルのロード／復元、予測、キャッシュ＆リリースを実行
     """
-    scorer.load_or_restore_model()  # ロードまたは復元
-    results: list[dict[str, Any]] = scorer.predict(images)  # 予測結果を取得
-    logger.debug(f"モデル '{scorer.model_name}' の評価結果を統一した形式に変換結果: {results}")
-    scorer.cache_to_main_memory()
+    with scorer:
+        results: list[dict[str, Any]] = scorer.predict(images)  # 予測結果を取得
     return results
 
 
@@ -96,6 +94,8 @@ def evaluate(images: list[Image.Image], model_list: list[str]) -> dict[str, list
         logger.info(f"モデル '{model_name}' での評価を開始します")
         scorer = get_scorer_instance(model_name)
         results = _evaluate_model(scorer, images)
+        logger.debug(f"モデル '{scorer.model_name}' の評価結果を統一した形式に変換結果: {results}")
+
         # 結果をモデルごとに集約
         for result in results:
             results_by_model.setdefault(model_name, []).append(result)

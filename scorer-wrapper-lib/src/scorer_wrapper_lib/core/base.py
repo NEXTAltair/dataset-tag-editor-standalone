@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseScorer(ABC):
+    # TODO: モデルのキャッシュ周りとかはmodel_factoryに移行するほうがきれい
     def __init__(self, model_name: str):
         """BaseScorer を初期化します。
 
@@ -24,6 +25,14 @@ class BaseScorer(ABC):
         self.model: dict[str, Any] = {}
         self.model_state = "unloaded"  # 初期状態: モデル未ロード
         self.logger = logging.getLogger(__name__)
+
+    def __enter__(self) -> "BaseScorer":
+        self.load_or_restore_model()
+        return self
+
+    def __exit__(self, exception_type: type[Exception], exception_value: Exception, traceback: Any) -> None:
+        if self.is_on_gpu():
+            self.cache_to_main_memory()
 
     def _load_model(self) -> None:
         """
@@ -88,8 +97,7 @@ class BaseScorer(ABC):
                     f"[{self.__class__.__name__}] コンポーネント '{component_name}' をCPUに移動しました"
                 )
 
-        # CUDAが利用可能な場合のみGPUメモリをクリア
-        if torch.cuda.is_available():
+        if self.is_on_gpu():
             torch.cuda.empty_cache()
 
         # 処理完了のログ
@@ -128,6 +136,7 @@ class BaseScorer(ABC):
         self.logger.info(
             f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリから復元しました。"
         )
+        self.model_state = f"on_{self.device}"
 
     def release_resources(self) -> None:
         """モデルへの参照を解放し、メモリリソースを完全に解放します。
@@ -199,19 +208,19 @@ class BaseScorer(ABC):
         pass
 
     def is_model_loaded(self) -> bool:
-        """モデルがロード済みかどうかを確認します。"""
+        """モデルがロード済みか確認"""
         return self.model_state != "unloaded"
 
     def is_on_gpu(self) -> bool:
-        """モデルがGPU上にあるかどうかを確認します。"""
+        """モデルがGPU上にあるか確認"""
         return self.model_state == f"on_{self.device}" and "cuda" in self.device
 
     def is_on_cpu(self) -> bool:
-        """モデルがCPU上にあるかどうかを確認します。"""
+        """モデルがCPU上にあるか確認"""
         return self.model_state == "on_cpu"
 
     def needs_gpu_restoration(self) -> bool:
-        """モデルがCPUにあり、GPUに戻す必要があるかを確認します。"""
+        """モデルがCPUにあり、GPUに戻す必要があるか確認"""
         return self.is_on_cpu() and "cuda" in self.device
 
 
@@ -303,13 +312,14 @@ class ClipModel(BaseScorer):
 
         results = []
         for image in images:
-            # 画像の特徴量抽出
-            image_embedding = self.preprocess(image)
-            tensor_input = self._prepare_tensor(image_embedding)
+            with torch.no_grad():  # NOTE: あると推論速度が早くなる
+                # 画像の特徴量抽出
+                image_embedding = self.preprocess(image)
+                tensor_input = self._prepare_tensor(image_embedding)
 
-            # モデル推論
-            raw_score = self.model["model"](tensor_input).item()
-            self.logger.debug(f"モデル '{self.model_name}' に処理された生の出力結果: {raw_score}")
+                # モデル推論
+                raw_score = self.model["model"](tensor_input).item()
+                self.logger.debug(f"モデル '{self.model_name}' に処理された生の出力結果: {raw_score}")
 
             # スコア計算とタグ生成
             calculated_score = self._calculate_score(raw_score)

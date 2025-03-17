@@ -5,8 +5,8 @@
 
 from unittest.mock import patch
 
-from PIL import Image
 import pytest
+from PIL import Image
 from pytest_bdd import given, parsers
 
 
