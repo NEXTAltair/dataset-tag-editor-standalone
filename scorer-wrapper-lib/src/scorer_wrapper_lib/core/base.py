@@ -157,32 +157,6 @@ class BaseScorer(ABC):
         """
         pass
 
-    def preprocess(self, image: Image.Image) -> torch.Tensor:
-        """画像をCLIPモデル用のテンソルに前処理します。
-
-        Args:
-            image (Image.Image): 入力画像。
-
-        Returns:
-            torch.Tensor: 前処理済みのテンソル。
-        """
-        return torch.tensor(image_embeddings(image, self.model["clip_model"], self.model["processor"]))
-
-    def _prepare_tensor(self, model_output: Any) -> torch.Tensor:
-        """テンソルを設定されたデバイスへ移動させます。
-
-        Args:
-            model_output: 変換対象の出力。
-
-        Returns:
-            torch.Tensor: 指定デバイス上のテンソル。
-        """
-        if isinstance(model_output, torch.Tensor):
-            tensor = model_output.float()
-        else:
-            tensor = torch.from_numpy(model_output).float()
-        return tensor.to(self.device)
-
     def _generate_result(self, model_output: Any, score_tag: str) -> dict[str, Any]:
         """標準化された結果の辞書を生成します。
 
@@ -289,11 +263,11 @@ class PipelineModel(BaseScorer):
         pass
 
     @abstractmethod
-    def _get_score_tag(self, score: float) -> str:
+    def _get_score_tag(self, score_float: float) -> str:
         """パイプラインモデル用のスコアタグを生成します。
 
         Args:
-            score (float): 計算されたスコア。
+            score_float (float): 計算されたスコア。
 
         Returns:
             str: 生成されたスコアタグ。
@@ -316,7 +290,7 @@ class ClipModel(BaseScorer):
         super().__init__(model_name=model_name)
 
     def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-        """CLIP+MLPモデルで画像リストの評価結果を予測します。
+        """CLIPモデルで画像リストの評価結果を予測します。
 
         Args:
             images (list[Image.Image]): 評価対象の画像リスト。
@@ -344,24 +318,42 @@ class ClipModel(BaseScorer):
 
         return results
 
-    def _calculate_score(self, raw_output: Any) -> float:
+    def _calculate_score(self, raw_score: torch.Tensor) -> float:
         """モデルの生出力からスコアを計算します。
-
         Args:
-            raw_output: モデルからの生出力。
+            raw_score: モデルからの生出力。
 
         Returns:
-            float: 計算されたスコア。
+            score_float (float): 計算されたスコア。
         """
-        return float(raw_output)
+        return float(raw_score)
 
-    def _get_score_tag(self, score: float) -> str:
-        """スコアからタグを生成します。
+    def preprocess(self, image: Image.Image) -> torch.Tensor:
+        """画像をCLIPモデル用のテンソルに前処理します。
 
         Args:
-            score (float): 計算されたスコア。
+            image (Image.Image): 入力画像。
 
         Returns:
-            str: 生成されたスコアタグ。
+            torch.Tensor: 前処理済みのテンソル。
         """
-        return f"{self.config.get('score_prefix', '')}score_{int(score)}"
+        return torch.tensor(image_embeddings(image, self.model["clip_model"], self.model["processor"]))
+
+    def _prepare_tensor(self, model_output: Any) -> torch.Tensor:
+        """テンソルを設定されたデバイスへ移動させます。
+
+        Args:
+            model_output: 変換対象の出力。
+
+        Returns:
+            torch.Tensor: 指定デバイス上のテンソル。
+        """
+        if isinstance(model_output, torch.Tensor):
+            tensor = model_output.float()
+        else:
+            tensor = torch.from_numpy(model_output).float()
+        return tensor.to(self.device)
+
+    @abstractmethod
+    def _get_score_tag(self, score_float: float) -> str:
+        pass

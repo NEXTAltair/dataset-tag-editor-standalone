@@ -12,51 +12,6 @@ from . import utils
 logger = logging.getLogger(__name__)
 
 
-class MLP(nn.Module):
-    """
-    Args:
-        in_features (int): 入力次元
-        hidden_features (list[int], optional): 各中間層のユニット数のリスト。指定がない場合はデフォルトの構成を使用
-        out_features (int, optional): 出力次元 (デフォルトは1)
-        act_layer (nn.Module, optional): 活性化関数（デフォルトは nn.GELU）
-        drop (float, optional): 各層のドロップアウト率 (デフォルトは0.1)
-    """
-
-    def __init__(
-        self,
-        in_features: int,
-        hidden_features: Optional[list[int]] = None,
-        out_features: int = 1,
-        act_layer: Type[nn.Module] = nn.GELU,
-        drop: float = 0.1,
-    ) -> None:
-        super().__init__()
-        if hidden_features is None:
-            # 参考実装と現在の実装の妥協構成
-            hidden_features = [1024, 128, 64, 16]
-        layers: list[nn.Module] = []  # nn.Moduleのリストとして型アノテーション
-        prev_features = in_features
-        for hf in hidden_features:
-            layers.append(nn.Linear(prev_features, hf))
-            layers.append(act_layer())
-            layers.append(nn.Dropout(drop))
-            prev_features = hf
-        layers.append(nn.Linear(prev_features, out_features))
-        self.layers = nn.Sequential(*layers)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """順伝播を実行します。
-
-        Args:
-            x (torch.Tensor): 入力テンソル
-
-        Returns:
-            torch.Tensor: 処理された出力テンソル
-        """
-        output: torch.Tensor = self.layers(x)
-        return output
-
-
 class Classifier(nn.Module):
     """画像特徴量を入力として、分類スコアを出力する柔軟な分類器。
 
@@ -155,7 +110,7 @@ def image_embeddings(
 
 def create_blip_mlp_model(config: dict[str, Any]) -> dict[str, Any]:
     """
-    BLIP+MLP モデルを作成します。
+    BLIP モデルを作成します。
 
     Args:
         config (dict[str, Any]): モデルの設定。

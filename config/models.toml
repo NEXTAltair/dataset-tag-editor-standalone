@@ -37,7 +37,7 @@ model_path = "https://github.com/christophschuhmann/improved-aesthetic-predictor
 base_model = "openai/clip-vit-large-patch14" # CLIPのベースモデル
 device = "cuda"
 score_prefix = "[IAP]"
-class = "ClipModel"
+class = "ImprovedAesthetic"
 
 [WaifuAesthetic]
 type = "clip"
@@ -45,7 +45,7 @@ model_path = "https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/m
 base_model = "openai/clip-vit-base-patch32"
 device = "cuda"
 score_prefix = "[WAIFU]"
-class = "ClipModel"
+class = "WaifuAesthetic"
 activation_type = "ReLU"        # 指定あり → ReLU活性化関数を使用
 final_activation_type = "Sigmoid"  # 指定あり → 最終層にSigmoid活性化関数を使用
 
