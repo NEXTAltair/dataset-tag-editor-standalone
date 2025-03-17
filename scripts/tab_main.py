@@ -183,7 +183,7 @@ def on_ui_tabs():
                 ui.dataset_gallery.create_ui(settings.current.image_columns, get_filters)
                 ui.gallery_state.create_ui()
 
-            with gr.Column(scale=2):
+            with gr.Column(scale=2):  # 右側のタブコンテナ（1/4の幅）
                 with gr.Tab(label="Filter by Tags"):
                     ui.filter_by_tags.create_ui(cfg_filter_p, cfg_filter_n, get_filters)
 
