@@ -6,7 +6,7 @@
 
 ## 1. 概要
 
-scorer_wrapper_lib は、各種美的評価モデル（例: Aesthetic Shadow, Cafe Aesthetic, CLIP+MLP Aesthetic Predictor など）の操作を統一されたラッパー API として提供するライブラリです。ユーザーは本ライブラリを呼び出すことで、各モデルの初期化、画像前処理、推論といった処理を抽象化された関数群を通して利用できます。将来的には動画評価や高度なチェックリスト評価の統合も検討事項です。
+scorer_wrapper_lib は、各種美的評価モデル（例: Aesthetic Shadow, Cafe Aesthetic, CLIP Aesthetic Predictor など）の操作を統一されたラッパー API として提供するライブラリです。ユーザーは本ライブラリを呼び出すことで、各モデルの初期化、画像前処理、推論といった処理を抽象化された関数群を通して利用できます。将来的には動画評価や高度なチェックリスト評価の統合も検討事項です。
 
 ---
 
@@ -38,7 +38,7 @@ scorer_wrapper_lib は、各種美的評価モデル（例: Aesthetic Shadow, Ca
 本ライブラリは、各美的評価モデルの初期化および推論処理を統一するために、下記の 2 層構造を採用します。
 
 1. Base 層: 基底クラス（BaseScorer）で、共通処理（モデルの初期化、入力の正規化、出力の整形）を実装
-2. Type 層: 新規抽象レイヤー「base_model_type」で、各モデルタイプ（例: Pipeline、CLIP+MLP、CLIP+Classifier）ごとの共通処理を定義
+2. Type 層: 新規抽象レイヤー「base_model_type」で、各モデルタイプ（例: Pipeline、CLIP、CLIP+Classifier）ごとの共通処理を定義
 3. Model 層: 各具体的なモデルクラスが、Type 層の実装を拡張して固有処理を実装
 
 この変更により、各処理手法間で入力画像の正規化や出力フォーマットの統一が容易となり、将来的な拡張および保守性が向上します。
