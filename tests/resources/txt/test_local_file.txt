@@ -1,0 +1,2 @@
+TEST
+test_local_file.txt
