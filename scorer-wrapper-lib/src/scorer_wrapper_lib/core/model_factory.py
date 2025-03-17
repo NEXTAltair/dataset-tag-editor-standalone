@@ -108,43 +108,43 @@ def image_embeddings(
     return normalized_result
 
 
-def create_blip_mlp_model(config: dict[str, Any]) -> dict[str, Any]:
-    """
-    BLIP モデルを作成します。
+# def create_blip_mlp_model(config: dict[str, Any]) -> dict[str, Any]:
+#     """
+#     BLIP モデルを作成します。
 
-    Args:
-        config (dict[str, Any]): モデルの設定。
+#     Args:
+#         config (dict[str, Any]): モデルの設定。
 
-    Returns:
-        dict[str, Any]: モデル、プロセッサ、BLIPモデルなどを含む辞書
+#     Returns:
+#         dict[str, Any]: モデル、プロセッサ、BLIPモデルなどを含む辞書
 
-    Note:
-        この関数は現在実装されていません。
-    """
-    # TODO: 将来的に実装予定
-    return {}  # 暫定的に空の辞書を返す
+#     Note:
+#         この関数は現在実装されていません。
+#     """
+# TODO: 将来的に実装予定
+#   return {}  # 暫定的に空の辞書を返す
 
 
-def create_blip_sfr_vision_language_research_model(config: dict[str, Any]) -> dict[str, Any]:
-    """
-    BLIP SFR Vision Language Research モデルを作成します。
+# def create_blip_sfr_vision_language_research_model(config: dict[str, Any]) -> dict[str, Any]:
+#     """
+#     BLIP SFR Vision Language Research モデルを作成します。
 
-    Args:
-        config (dict[str, Any]): モデルの設定。
+#     Args:
+#         config (dict[str, Any]): モデルの設定。
 
-    Returns:
-        dict[str, Any]: モデル、プロセッサ、BLIPモデルなどを含む辞書
-    """
-    # モジュールが存在しない場合のエラー処理
-    try:
-        from ..score_models.imagereward import (
-            create_blip_sfr_vision_language_research_model as create_model_func,
-        )
+#     Returns:
+#         dict[str, Any]: モデル、プロセッサ、BLIPモデルなどを含む辞書
+#     """
+#     # モジュールが存在しない場合のエラー処理
+#     try:
+#         from ..score_models.imagereward import (
+#             create_blip_sfr_vision_language_research_model as create_model_func,
+#         )
 
-        return create_model_func(config)
-    except (ImportError, AttributeError):
-        logger.warning("ImageRewardモデルが見つかりません。空の辞書を返します。")
-        return {}
+#         return create_model_func(config)
+#     except (ImportError, AttributeError):
+#         logger.warning("ImageRewardモデルが見つかりません。空の辞書を返します。")
+#         return {}
 
 
 def create_clip_model(config: dict[str, Any]) -> dict[str, Any]:
@@ -280,10 +280,10 @@ def create_model(config: dict[str, Any]) -> dict[str, Any]:
     elif model_type == "clip":
         return create_clip_model(config)
 
-    elif model_type == "blip_mlp":
-        # NOTE: 実装が特殊なので、モデルのクラスを指定する
-        if config["class"] == "ImageRewardScorer":
-            return create_blip_sfr_vision_language_research_model(config)
-        return create_blip_mlp_model(config)
+    # elif model_type == "blip_mlp":
+    #     # NOTE: 実装が特殊なので、モデルのクラスを指定する
+    #     if config["class"] == "ImageRewardScorer":
+    #         return create_blip_sfr_vision_language_research_model(config)
+    #     return create_blip_mlp_model(config)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
