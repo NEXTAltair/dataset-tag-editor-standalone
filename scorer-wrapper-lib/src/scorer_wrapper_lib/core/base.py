@@ -2,10 +2,11 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+import numpy as np
 import torch
 from PIL import Image
 
-from .model_factory import create_model, image_embeddings
+from .model_factory import ModelLoad
 from .utils import load_model_config
 
 logger = logging.getLogger(__name__)
@@ -21,138 +22,35 @@ class BaseScorer(ABC):
         """
         self.model_name = model_name
         self.config: dict[str, Any] = load_model_config()[model_name]
-        self.device = self.config["device"]
+        self.model_type = self.config["type"]
+        self.base_model = self.config.get("base_model", None)
+        self.model_path = self.config["model_path"]
+        self.device = self.config.get("device", "cuda")
+        self.activation_type = self.config.get("activation_type", None)
+        self.final_activation_type = self.config.get("final_activation_type", None)
         self.model: dict[str, Any] = {}
-        self.model_state = "unloaded"  # 初期状態: モデル未ロード
         self.logger = logging.getLogger(__name__)
 
     def __enter__(self) -> "BaseScorer":
-        self.load_or_restore_model()
+        """
+        モデルの状態に基づいて、必要な場合のみロードまたは復元
+        """
+        loaded_model = ModelLoad.load_model(
+            self.model_name,
+            self.model_type,
+            self.base_model,
+            self.model_path,
+            self.device,
+            self.activation_type,
+            self.final_activation_type,
+        )
+        if loaded_model is not None:
+            self.model = loaded_model
+        self.model = ModelLoad.restore_model_to_cuda(self.model_name, self.device, self.model)
         return self
 
     def __exit__(self, exception_type: type[Exception], exception_value: Exception, traceback: Any) -> None:
-        if self.is_on_gpu():
-            self.cache_to_main_memory()
-
-    def _load_model(self) -> None:
-        """
-        モデルファクトリを使用してモデルを読み込みます。
-
-        Raises:
-            Exception: モデル読み込み時に発生した例外をそのまま伝播します。
-        """
-        self.model = create_model(self.config)
-        self.model_state = f"on_{self.device}"  # "on_cuda" または "on_cpu"
-
-    def load_or_restore_model(self) -> None:
-        """
-        モデルの状態に基づいて、必要な場合のみロードまたは復元します。
-        """
-        if not self.is_model_loaded():
-            # モデルが読み込まれていない場合
-            self.logger.debug(f"モデル '{self.model_name}' をロードします")
-            self._load_model()
-        elif self.needs_gpu_restoration():
-            # CPUにキャッシュされていて、GPUに戻す必要がある場合
-            self.logger.debug(f"モデル '{self.model_name}' をGPUに復元します")
-            self._restore_from_main_memory()
-
-    def _release_model(self) -> None:
-        """
-        モデルを_LOADED_SCORERS から削除 メモリから解放し、GPUキャッシュをクリアします。
-        """
-        if self.model is not None:
-            self.model_state = "unloaded"  # モデル解放
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-    def cache_to_main_memory(self) -> None:
-        """モデルをCPUメモリにキャッシュします。
-
-        モデルのすべてのコンポーネントをGPUからCPUメモリに移動します。
-        これにより、GPU上のメモリは解放されますが、モデル自体は保持されるため、
-        後で`_restore_from_main_memory()`を呼び出して再利用できます。
-
-        主な用途:
-        - 一時的にGPUメモリを解放したい場合
-        - 複数のモデルを交互に使用する場合
-        - モデル自体は保持したままGPUリソースを解放したい場合
-
-        Note:
-            このメソッドはモデルを破棄しません。モデルを完全に解放するには
-            `release_resources()`を使用してください。
-        """
-        # 辞書内の各要素に対して処理
-        for component_name, component in self.model.items():
-            if component_name == "pipeline":
-                # パイプラインの場合は内部モデルを移動
-                if hasattr(component, "model"):
-                    component.model.to("cpu")
-                self.logger.debug(
-                    f"[{self.__class__.__name__}] パイプライン '{component_name}' をCPUに移動しました"
-                )
-            elif hasattr(component, "to"):  # toメソッドを持つ場合のみCPUに移動
-                component.to("cpu")
-                self.logger.debug(
-                    f"[{self.__class__.__name__}] コンポーネント '{component_name}' をCPUに移動しました"
-                )
-
-        if self.is_on_gpu():
-            torch.cuda.empty_cache()
-
-        # 処理完了のログ
-        self.logger.info(
-            f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリにキャッシュしました。"
-        )
-        self.model_state = "on_cpu"
-
-    def _restore_from_main_memory(self) -> None:
-        """CPUにキャッシュされたモデルを指定デバイスCUDAに復元します。
-
-        `cache_to_main_memory()`を使用してCPUに移動したモデルを、
-        設定されたデバイスself.device、CUDAに戻します。
-        これにより、モデルは再び高速推論の準備が整います。
-
-        主な用途:
-        - キャッシュしておいたモデルを再度使用する前
-        - CUDA上での処理が必要になった時
-        """
-        # 辞書内の各要素に対して処理
-        for component_name, component in self.model.items():
-            if component_name == "pipeline":
-                # パイプラインの場合は内部モデルを移動
-                if hasattr(component, "model"):
-                    component.model.to(self.device)
-                self.logger.debug(
-                    f"[{self.__class__.__name__}] パイプライン '{component_name}' を{self.device}に移動しました"
-                )
-            elif hasattr(component, "to"):  # toメソッドを持つ場合のみデバイスに移動
-                component.to(self.device)
-                self.logger.debug(
-                    f"[{self.__class__.__name__}] コンポーネント '{component_name}' を{self.device}に移動しました"
-                )
-
-        # 処理完了のログ
-        self.logger.info(
-            f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリから復元しました。"
-        )
-        self.model_state = f"on_{self.device}"
-
-    def release_resources(self) -> None:
-        """モデルへの参照を解放し、メモリリソースを完全に解放します。
-
-        このメソッドは`_release_model()`を呼び出してモデルへの参照を削除し、
-        Pythonのガベージコレクションによってメモリを解放できるようにします。
-
-        子クラスでは、このメソッドをオーバーライドして、モデル固有の
-        追加リソース解放処理を実装できます。
-
-        主な用途:
-        - メモリ使用量を最小化する必要がある場合
-        - モデルを完全に解放する場合
-        - 新しいモデルをロードする前に既存のモデルを解放する場合
-        """
-        self._release_model()
+        self.model = ModelLoad.cache_to_main_memory(self.model_name, self.model)
 
     @abstractmethod
     def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
@@ -206,22 +104,6 @@ class BaseScorer(ABC):
             str: 生成されたスコアタグ。
         """
         pass
-
-    def is_model_loaded(self) -> bool:
-        """モデルがロード済みか確認"""
-        return self.model_state != "unloaded"
-
-    def is_on_gpu(self) -> bool:
-        """モデルがGPU上にあるか確認"""
-        return self.model_state == f"on_{self.device}" and "cuda" in self.device
-
-    def is_on_cpu(self) -> bool:
-        """モデルがCPU上にあるか確認"""
-        return self.model_state == "on_cpu"
-
-    def needs_gpu_restoration(self) -> bool:
-        """モデルがCPUにあり、GPUに戻す必要があるか確認"""
-        return self.is_on_cpu() and "cuda" in self.device
 
 
 class PipelineModel(BaseScorer):
@@ -298,6 +180,27 @@ class ClipModel(BaseScorer):
     def __init__(self, model_name: str):
         super().__init__(model_name=model_name)
 
+    # image_embeddings 関数 (WaifuAesthetic で使用されているものを流用)
+    def image_embeddings(self, image: Image.Image) -> np.ndarray[Any, np.dtype[Any]]:
+        """画像から CLIP モデルを使用して埋め込みベクトルを生成します。
+
+        Args:
+            image (Image.Image): 埋め込みを生成するための入力画像
+            model (CLIPModel): 特徴抽出に使用する CLIP モデル
+            processor (CLIPProcessor): 画像の前処理を行う CLIP プロセッサ
+
+        Returns:
+            np.ndarray: 正規化された画像の埋め込みベクトル
+        """
+        processor = self.model["processor"]
+        model = self.model["clip_model"]
+        inputs = processor(images=image, return_tensors="pt")["pixel_values"]
+        inputs = inputs.to(model.device)
+        result = model.get_image_features(pixel_values=inputs).cpu().detach().numpy()
+        # 正規化された埋め込みを返す
+        normalized_result: np.ndarray[Any, np.dtype[Any]] = result / np.linalg.norm(result)
+        return normalized_result
+
     def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
         """CLIPモデルで画像リストの評価結果を予測します。
 
@@ -307,8 +210,6 @@ class ClipModel(BaseScorer):
         Returns:
             list[dict]: 評価結果の辞書リスト。
         """
-        if not self.is_model_loaded():
-            self.load_or_restore_model()
 
         results = []
         for image in images:
@@ -347,7 +248,7 @@ class ClipModel(BaseScorer):
         Returns:
             torch.Tensor: 前処理済みのテンソル。
         """
-        return torch.tensor(image_embeddings(image, self.model["clip_model"], self.model["processor"]))
+        return torch.tensor(self.image_embeddings(image))
 
     def _prepare_tensor(self, model_output: Any) -> torch.Tensor:
         """テンソルを設定されたデバイスへ移動させます。

@@ -161,7 +161,7 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
 def load_model_config() -> dict[str, dict[str, Any]]:
     """セクションはモデル名 モデルごとのパラメーター
 
-    # TODO: 設定なしのデフォルト値の設定は後でやるが､優先度低い
+    # NOTE: 設定なしのデフォルト値の設定はBaseScorerでやる
 
     Returns:
         dict[str, dict[str, Any]]: model_nameをキーとしたモデルごとのパラメーターの辞書

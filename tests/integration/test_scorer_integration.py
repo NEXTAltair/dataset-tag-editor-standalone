@@ -258,12 +258,12 @@ def then_all_models_instantiated(available_models: list[str], instantiated_model
         assert model_instance is not None, f"モデル '{model_name}' のインスタンスが None です"
 
         # 必要なメソッドが存在することを確認
-        assert hasattr(model_instance, "load_or_restore_model"), (
-            f"モデル '{model_name}' に load_or_restore_model メソッドがありません"
-        )
         assert hasattr(model_instance, "predict"), f"モデル '{model_name}' に predict メソッドがありません"
-        assert hasattr(model_instance, "cache_to_main_memory"), (
-            f"モデル '{model_name}' に cache_to_main_memory メソッドがありません"
+        assert hasattr(model_instance, "_calculate_score"), (
+            f"モデル '{model_name}' に _calculate_score メソッドがありません"
+        )
+        assert hasattr(model_instance, "_generate_result"), (
+            f"モデル '{model_name}' に _generate_result メソッドがありません"
         )
 
 
