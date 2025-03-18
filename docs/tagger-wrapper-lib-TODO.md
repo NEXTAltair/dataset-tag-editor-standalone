@@ -71,7 +71,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
           @abstractmethod
           def __enter__(self) -> "BaseTagger":
               """
-              モデルの状態に基づいて、必要な場合のみロードまたは復元
+              この処理はタイプ別クラスに任す
               """
               pass
 
@@ -84,17 +84,17 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
               pass
 
           @abstractmethod
-          def _generate_result(self, model_output: Any, score_tag: str) -> dict[str, Any]:
-          """標準化された結果の辞書を生成します。
+          def _generate_result(self, model_output: Any, tags: list[str]) -> dict[str, Any]:
+              """標準化された結果の辞書を生成します。
 
-          Args:
-              model_name (str): モデルの名前。
-              model_output: モデルの出力。
-              score_tag (str)-各サブクラスでスコアを変換したタグ
+              Args:
+                  model_name (str): モデルの名前。
+                  model_output: モデルの出力。
+                  tags (list)-各サブクラスでスコアを変換したタグ
 
-          Returns:
-              dict: モデル出力、モデル名、スコアタグを含む辞書。
-          """
+              Returns:
+                  dict: モデル出力、モデル名、スコアタグを含む辞書。
+              """
           return {
               "model_name": self.model_name,
               "model_output": model_output,
@@ -123,7 +123,15 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
               self.processor_path = self.config.get("processor_path", self.model_path)
               self.processor = None  # __enter__でロード
 
+          def __enter__(self) -> "TransformerModelTagger":
+              """モデルとプロセッサをロードします。"""
 
+              # Transformers固有の初期化処理
+              if "processor" not in self.model:
+                  from transformers import AutoProcessor
+                  self.model["processor"] = AutoProcessor.from_pretrained(self.processor_path)
+
+              return self
           def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
               """画像からタグを予測します。"""
               results = []
@@ -170,18 +178,6 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
                   list[str]: タグのリスト
               """
               pass
-
-          def __enter__(self) -> "TransformerModelTagger":
-              """モデルとプロセッサをロードします。"""
-              # 親クラスの__enter__を呼び出し
-              super().__enter__()
-
-              # Transformers固有の初期化処理
-              if "processor" not in self.model:
-                  from transformers import AutoProcessor
-                  self.model["processor"] = AutoProcessor.from_pretrained(self.processor_path)
-
-              return self
       ```
 
     - PipelineModelTagger クラス:
@@ -352,39 +348,88 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
     2. モデルタイプ別中間クラス: `TransformerModelTagger`, `PipelineModelTagger`, `ONNXModelTagger`, `TorchModelTagger`
     3. 具体的なモデル実装クラス: 各モデルの独自処理を実装した最終的なクラス
 
-    具体的なモデル実装クラスの例:
+    各モデルタイプ特有の引数と`__enter__`メソッドを含めた具体的なモデル実装クラスの詳細：
+
+    ## TransformerModel ベースのタガー
 
     ```python
     class BLIPTagger(TransformerModelTagger):
         """BLIP大規模キャプショニングモデルを使用したタガー"""
 
+        def __enter__(self) -> "BLIPTagger":
+            """BLIPモデルとプロセッサをロードします。"""
+            # TransformerModelTaggerの__enter__を呼び出し
+            super().__enter__()
+
+            # BLIPモデル固有のロードロジック
+            if "model" not in self.model:
+                from transformers import BlipForConditionalGeneration, BlipProcessor
+
+                self.logger.info(f"BLIPモデル '{self.model_path}' をロードしています...")
+                self.model["model"] = BlipForConditionalGeneration.from_pretrained(
+                    self.model_path
+                ).to(self.device)
+
+                self.model["processor"] = BlipProcessor.from_pretrained(
+                    self.processor_path or self.model_path
+                )
+
+            return self
+
         def _preprocess_image(self, image: Image.Image) -> dict:
             """画像を前処理してBLIPモデル入力形式に変換します。"""
             # BLIPプロセッサを使用した前処理
-            inputs = self.processor(images=image, return_tensors="pt").to(self.device)
+            inputs = self.model["processor"](images=image, return_tensors="pt").to(self.device)
             return inputs
 
         def _run_inference(self, inputs: dict) -> Any:
             """BLIP推論を実行します。"""
             # モデルからキャプションを生成
-            outputs = self.model.generate(**inputs, max_length=self.max_length)
+            outputs = self.model["model"].generate(**inputs, max_length=self.max_length)
             return outputs
 
         def _postprocess_output(self, outputs: Any) -> list[str]:
             """BLIP出力を処理してタグのリストに変換します。"""
             # トークンをテキストにデコード
-            caption = self.processor.decode(outputs[0], skip_special_tokens=True)
+            caption = self.model["processor"].decode(outputs[0], skip_special_tokens=True)
             # キャプションをタグに分割
             tags = [tag.strip() for tag in caption.split(",")]
             return tags
+    ```
 
+    ## ONNXModel ベースのタガー
+
+    ```python
     class WaifuDiffusionTagger(ONNXModelTagger):
         """Waifu Diffusion Taggerを使用したタガー"""
 
+        def __enter__(self) -> "WaifuDiffusionTagger":
+            """WD-Taggerモデルとラベルをロードします。"""
+            super().__enter__()
+
+            # WD-Tagger固有のロードロジック
+            if "session" not in self.model:
+                import onnxruntime as ort
+                import numpy as np
+
+                self.logger.info(f"WD-Taggerモデル '{self.model_path}' をロードしています...")
+
+                # ONNXランタイムのセッション作成
+                providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if self.device == "cuda" else ['CPUExecutionProvider']
+                self.model["session"] = ort.InferenceSession(self.model_path, providers=providers)
+
+                # ラベルのロード
+                with open(self.tags_path, 'r', encoding='utf-8') as f:
+                    self.model["labels"] = [line.strip() for line in f]
+
+            return self
+
         def _preprocess_image(self, image: Image.Image) -> np.ndarray:
             """画像を前処理してONNXモデル入力形式に変換します。"""
+            import numpy as np
+
             # 画像のリサイズと正規化
-            image = image.resize((448, 448))
+            image = image.resize(self.input_size)
             image_array = np.array(image).astype(np.float32)
             # チャンネル順の変換とバッチ次元の追加
             image_array = image_array.transpose(2, 0, 1)
@@ -401,19 +446,55 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
 
         def _postprocess_output(self, output_data: np.ndarray) -> list[str]:
             """ONNX出力を処理してタグのリストに変換します。"""
+            import numpy as np
+
             # 閾値以上の確率を持つラベルを抽出
             indices = np.where(output_data[0] > self.threshold)[0]
-            tags = [self.labels[idx] for idx in indices]
+            tags = [self.model["labels"][idx] for idx in indices]
             return tags
+    ```
 
+    ## TorchModel ベースのタガー
+
+    ````python
     class DeepDanbooruTagger(TorchModelTagger):
         """DeepDanbooruモデルを使用したタガー"""
 
+        def __enter__(self) -> "DeepDanbooruTagger":
+            """DeepDanbooruモデルとタグをロードします。"""
+            super().__enter__()
+
+            # DeepDanbooru固有のロードロジック
+            if "model" not in self.model:
+                import torch
+                from torchvision import transforms
+
+                self.logger.info(f"DeepDanbooruモデル '{self.model_path}' をロードしています...")
+
+                # トランスフォーム設定
+                self.model["transform"] = transforms.Compose([
+                    transforms.Resize(self.input_size),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+                ])
+
+                # モデルのロード
+                self.model["model"] = torch.load(self.model_path, map_location=self.device)
+                self.model["model"].eval()
+
+                # タグのロード
+                with open(self.tags_path, 'r', encoding='utf-8') as f:
+                    self.model["tags"] = [line.strip() for line in f]
+
+            return self
+
         def _preprocess_image(self, image: Image.Image) -> torch.Tensor:
             """画像を前処理してPyTorchモデル入力形式に変換します。"""
+            import torch
+
             # 画像のリサイズと正規化
-            image = image.convert("RGB").resize((512, 512))
-            image_tensor = self.transform(image).unsqueeze(0).to(self.device)
+            image = image.convert("RGB")
+            image_tensor = self.model["transform"](image).unsqueeze(0).to(self.device)
             return image_tensor
 
         def _run_inference(self, input_tensor: torch.Tensor) -> torch.Tensor:
@@ -424,120 +505,39 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
 
         def _postprocess_output(self, output_tensor: torch.Tensor) -> list[str]:
             """PyTorchモデル出力を処理してタグのリストに変換します。"""
+            import numpy as np
+
             # 閾値以上の確率を持つラベルを抽出
             probs = output_tensor[0].cpu().numpy()
             indices = np.where(probs > self.threshold)[0]
-            tags = [self.tags[idx] for idx in indices]
+            tags = [self.model["tags"][idx] for idx in indices]
             return tags
+        ```
 
-    class GITTagger(TransformerModelTagger):
-        """GIT大規模キャプショニングモデルを使用したタガー"""
+    各モデルタイプで必要な設定パラメータまとめ
 
-        def _preprocess_image(self, image: Image.Image) -> dict:
-            """画像を前処理してGITモデル入力形式に変換します。"""
-            # GITプロセッサを使用した前処理
-            inputs = self.processor(images=image, return_tensors="pt").to(self.device)
-            return inputs
+    1. **BaseTagger**
 
-        def _run_inference(self, inputs: dict) -> Any:
-            """GIT推論を実行します。"""
-            # モデルからキャプションを生成
-            outputs = self.model.generate(**inputs, max_length=self.max_length)
-            return outputs
+       - 共通パラメータ: `model_name`, `model_type`, `model_path`, `device`（デフォルト: "cuda"）
 
-        def _postprocess_output(self, outputs: Any) -> list[str]:
-            """GIT出力を処理してタグのリストに変換します。"""
-            # トークンをテキストにデコード
-            caption = self.processor.decode(outputs[0], skip_special_tokens=True)
-            # キャプションをタグに分割
-            tags = [tag.strip() for tag in caption.split(",")]
-            return tags
-    ```
+    2. **TransformerModelTagger**
 
-    各具体的なモデルクラスの役割:
+       - 追加パラメータ: `max_length`（キャプション生成長）, `processor_path`（オプション）
 
-    - 前処理（`_preprocess_image`）: モデルに入力する前の画像変換処理
-    - 推論実行（`_run_inference`）: モデル固有の推論ロジック
-    - 後処理（`_postprocess_output`）: モデル出力からタグリストへの変換
+    3. **ONNXModelTagger**
 
-    各モデルクラスはそれぞれのモデルアーキテクチャに特化した実装を提供し、中間抽象クラスが定義する標準的なインターフェースに従います。これにより、新しいモデルの追加が容易になり、コードの再利用性が高まります。
+       - 追加パラメータ: `tags_path`, `threshold`, `input_size`
 
-  - [x] モデルキャッシュ管理の改善設計
+    4. **TorchModelTagger**
 
-    ScorerBase の実装における欠陥を改善し、モデルキャッシュ管理の詳細な実装を`model_factory.py`に移行します：
+       - 追加パラメータ: `tags_path`, `threshold`, `input_size`（デフォルト: (512, 512)）
 
-    ```python
-    # model_factory.py 内のモデルキャッシュ管理
+    5. **PipelineModelTagger**
+       - 追加パラメータ: `tag_prefix`, `threshold`
 
-    _LOADED_MODELS: dict[str, dict[str, Any]] = {}
-    _MODEL_STATES: dict[str, str] = {}  # "unloaded", "on_cpu", "on_cuda:0" など
+    この設計により、各モデルタイプに特化した初期化とロードロジックが実装され、それぞれのモデルの特性に合わせた処理が可能になります。
 
-    def create_model(config: dict[str, Any]) -> dict[str, Any]:
-        """設定に基づいてモデルを作成し、キャッシュに保存します。"""
-        model_name = config["model_name"]
-        # モデルがすでにキャッシュにある場合は再利用
-        if model_name in _LOADED_MODELS:
-            return _LOADED_MODELS[model_name]
-
-        # モデルを作成し、キャッシュに保存
-        model = _create_model_instance(config)
-        _LOADED_MODELS[model_name] = model
-        _MODEL_STATES[model_name] = f"on_{config['device']}"
-        return model
-
-    def get_model_state(model_name: str) -> str:
-        """モデルの現在の状態を取得します。"""
-        return _MODEL_STATES.get(model_name, "unloaded")
-
-    def cache_model_to_cpu(model_name: str, model: dict[str, Any]) -> None:
-        """モデルをCPUにキャッシュします。"""
-        for component_name, component in model.items():
-            if component_name == "pipeline":
-                if hasattr(component, "model"):
-                    component.model.to("cpu")
-                logging.debug(f"パイプライン '{component_name}' をCPUに移動しました")
-            elif hasattr(component, "to"):
-                component.to("cpu")
-                logging.debug(f"コンポーネント '{component_name}' をCPUに移動しました")
-
-        # GPUメモリをクリア
-        if "cuda" in _MODEL_STATES.get(model_name, ""):
-            torch.cuda.empty_cache()
-
-        _MODEL_STATES[model_name] = "on_cpu"
-        logging.info(f"モデル '{model_name}' をメインメモリにキャッシュしました。")
-
-    def restore_model_to_device(model_name: str, model: dict[str, Any], device: str) -> None:
-        """モデルを指定デバイスに復元します。"""
-        for component_name, component in model.items():
-            if component_name == "pipeline":
-                if hasattr(component, "model"):
-                    component.model.to(device)
-                logging.debug(f"パイプライン '{component_name}' を{device}に移動しました")
-            elif hasattr(component, "to"):
-                component.to(device)
-                logging.debug(f"コンポーネント '{component_name}' を{device}に移動しました")
-
-        _MODEL_STATES[model_name] = f"on_{device}"
-        logging.info(f"モデル '{model_name}' をメインメモリから復元しました。")
-
-    def release_model(model_name: str) -> None:
-        """モデルをキャッシュから削除します。"""
-        if model_name in _LOADED_MODELS:
-            del _LOADED_MODELS[model_name]
-        if model_name in _MODEL_STATES:
-            del _MODEL_STATES[model_name]
-
-        # GPUメモリをクリア
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        logging.info(f"モデル '{model_name}' を解放しました。")
-    ```
-
-    これに伴い、`BaseTagger`クラスのモデル管理メソッドも簡素化されます：
-
-    この改善により、モデルのキャッシュ管理ロジックが`model_factory.py`に集約され、`BaseTagger`クラスはより高レベルのインターフェースとして機能します。また、モデルの状態管理がグローバルに行われるため、複数のインスタンス間での一貫性も確保されます。
+    ````
 
   - [ ] 公開 API インターフェースの設計
 
@@ -596,24 +596,18 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
       ```toml
       # タグ付けモデル設定ファイル
       [models.blip]
-      type = "captioning"
       model_path = "Salesforce/blip-image-captioning-large"
-      description = "BLIP キャプショニングモデル"
       device = "cuda"
 
       [models.deepdanbooru]
-      type = "classification"
       model_path = "deepdanbooru-v3-20211112-sgd-e28.onnx"
       threshold = 0.5
       tags_path = "deepdanbooru-v3-20211112-sgd-e28.txt"
-      description = "DeepDanbooru タグ付けモデル"
       device = "cuda"
 
       [models.wd_tagger]
-      type = "classification"
       model_path = "wd-v1-4-swinv2-tagger-v2"
       threshold = 0.35
-      description = "Waifu Diffusion Tagger"
       device = "cuda"
       ```
 
