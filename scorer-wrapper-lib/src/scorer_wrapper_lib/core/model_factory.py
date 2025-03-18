@@ -1,10 +1,8 @@
 import logging
 from typing import Any, Optional, Type
 
-import numpy as np
 import torch
 import torch.nn as nn
-from PIL import Image
 from transformers import CLIPModel, CLIPProcessor, pipeline
 
 from . import utils
@@ -235,40 +233,39 @@ def create_clip_model(
     return {"model": model, "processor": clip_processor, "clip_model": clip_model}
 
 
-def create_model(
-    model_type: str,
-    base_model: str,
-    model_path: str,
-    device: str,
-    activation_type: Optional[str] = None,
-    final_activation_type: Optional[str] = None,
-) -> dict[str, Any]:
-    """
-    指定された設定に基づいてモデルを作成します。
+class ModelLoad:
+    _MODEL_STATES: dict[str, str] = {}
+    logger = logging.getLogger(__name__)
 
-    Args:
-        config (dict[str, Any]): モデルの設定情報を含む辞書。
-                            "type" キーはモデルの種類を指定します。
-                            ("pipeline", "clip", "blip_mlp" のいずれか)
 
-    Returns:
-        dict[str, Any]: モデル、プロセッサ、その他必要なコンポーネントを含む辞書
-
-    Raises:
-        ValueError: 不明なモデルタイプが指定された場合
-    """
-    BATCH_SIZE = 8  # NOTE: 暫定的な設定ユーザーに設定求めるほどのものではない
-
-    if model_type == "pipeline":
+    @staticmethod
+    def pipeline_model_load(
+        model_name: str, model_path: str, batch_size: int, device: str
+    ) -> Optional[dict[str, Any]]:
+        if model_name in ModelLoad._MODEL_STATES:
+            ModelLoad.logger.debug(f"モデル '{model_name}' は既に読み込まれています。")
+            return None
         pipeline_obj = pipeline(
             model=model_path,
             device=device,
-            batch_size=BATCH_SIZE,
+            batch_size=batch_size,
             use_fast=True,
         )
+        ModelLoad._MODEL_STATES[model_name] = f"on_{device}"
         return {"pipeline": pipeline_obj}
 
-    elif model_type == "clip":
+    @staticmethod
+    def clip_model_load(
+        model_name: str,
+        base_model: str,
+        model_path: str,
+        device: str,
+        activation_type: Optional[str] = None,
+        final_activation_type: Optional[str] = None,
+    ) -> Optional[dict[str, Any]]:
+        if model_name in ModelLoad._MODEL_STATES:
+            ModelLoad.logger.debug(f"モデル '{model_name}' は既に読み込まれています。")
+            return None
         model_dict = create_clip_model(
             base_model=base_model,
             model_path=model_path,
@@ -276,51 +273,9 @@ def create_model(
             activation_type=activation_type,
             final_activation_type=final_activation_type,
         )
+
+        ModelLoad._MODEL_STATES[model_name] = f"on_{device}"
         return model_dict
-
-    # elif model_type == "blip_mlp":
-    #     # NOTE: 実装が特殊なので、モデルのクラスを指定する
-    #     if config["class"] == "ImageRewardScorer":
-    #         return create_blip_sfr_vision_language_research_model(config)
-    #     return create_blip_mlp_model(config)
-    else:
-        raise ValueError(f"Unknown model type: {model_type}")
-
-
-class ModelLoad:
-    _MODEL_STATES: dict[str, str] = {}
-    logger = logging.getLogger(__name__)
-
-    @staticmethod
-    def load_model(
-        model_name: str,
-        model_type: str,
-        base_model: str,
-        model_path: str,
-        device: str,
-        activation_type: Optional[str] = None,
-        final_activation_type: Optional[str] = None,
-    ) -> Optional[dict[str, Any]]:
-        """
-        モデルを読み込みます。
-
-        Raises:
-            Exception: モデル読み込み時に発生した例外をそのまま伝播します。
-        """
-        if model_name in ModelLoad._MODEL_STATES:
-            ModelLoad.logger.debug(f"モデル '{model_name}' は既に読み込まれています。")
-            return None
-
-        model = create_model(
-            model_type=model_type,
-            base_model=base_model,
-            model_path=model_path,
-            device=device,
-            activation_type=activation_type,
-            final_activation_type=final_activation_type,
-        )
-        ModelLoad._MODEL_STATES[model_name] = f"on_{device}"  # "on_cuda" または "on_cpu"
-        return model
 
     @staticmethod
     def cache_to_main_memory(model_name: str, model: dict[str, Any]) -> dict[str, Any]:

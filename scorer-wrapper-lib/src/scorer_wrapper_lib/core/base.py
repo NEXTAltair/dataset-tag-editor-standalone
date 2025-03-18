@@ -22,32 +22,14 @@ class BaseScorer(ABC):
         """
         self.model_name = model_name
         self.config: dict[str, Any] = load_model_config()[model_name]
-        self.model_type = self.config["type"]
-        self.base_model = self.config.get("base_model", None)
         self.model_path = self.config["model_path"]
         self.device = self.config.get("device", "cuda")
-        self.activation_type = self.config.get("activation_type", None)
-        self.final_activation_type = self.config.get("final_activation_type", None)
         self.model: dict[str, Any] = {}
         self.logger = logging.getLogger(__name__)
 
+    @abstractmethod
     def __enter__(self) -> "BaseScorer":
-        """
-        モデルの状態に基づいて、必要な場合のみロードまたは復元
-        """
-        loaded_model = ModelLoad.load_model(
-            self.model_name,
-            self.model_type,
-            self.base_model,
-            self.model_path,
-            self.device,
-            self.activation_type,
-            self.final_activation_type,
-        )
-        if loaded_model is not None:
-            self.model = loaded_model
-        self.model = ModelLoad.restore_model_to_cuda(self.model_name, self.device, self.model)
-        return self
+        pass
 
     def __exit__(self, exception_type: type[Exception], exception_value: Exception, traceback: Any) -> None:
         self.model = ModelLoad.cache_to_main_memory(self.model_name, self.model)
@@ -114,7 +96,22 @@ class PipelineModel(BaseScorer):
             model_name (str): モデルの名前。
         """
         super().__init__(model_name=model_name)
-        self.score_prefix = self.config.get("score_prefix", "")
+        self.batch_size = self.config.get("batch_size", 8)
+
+    def __enter__(self) -> "PipelineModel":
+        """
+        モデルの状態に基づいて、必要な場合のみロードまたは復元
+        """
+        loaded_model = ModelLoad.pipeline_model_load(
+            self.model_name,
+            self.model_path,
+            self.batch_size,
+            self.device,
+        )
+        if loaded_model is not None:
+            self.model = loaded_model
+        self.model = ModelLoad.restore_model_to_cuda(self.model_name, self.device, self.model)
+        return self
 
     def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
         """パイプラインモデルで画像リストの評価結果を予測します。
@@ -179,6 +176,26 @@ class ClipModel(BaseScorer):
 
     def __init__(self, model_name: str):
         super().__init__(model_name=model_name)
+        self.base_model = self.config["base_model"]
+        self.activation_type = self.config.get("activation_type", None)
+        self.final_activation_type = self.config.get("final_activation_type", None)
+
+    def __enter__(self) -> "ClipModel":
+        """
+        モデルの状態に基づいて、必要な場合のみロードまたは復元
+        """
+        loaded_model = ModelLoad.clip_model_load(
+            self.model_name,
+            self.base_model,
+            self.model_path,
+            self.device,
+            self.activation_type,
+            self.final_activation_type,
+        )
+        if loaded_model is not None:
+            self.model = loaded_model
+        self.model = ModelLoad.restore_model_to_cuda(self.model_name, self.device, self.model)
+        return self
 
     # image_embeddings 関数 (WaifuAesthetic で使用されているものを流用)
     def image_embeddings(self, image: Image.Image) -> np.ndarray[Any, np.dtype[Any]]:
@@ -224,6 +241,9 @@ class ClipModel(BaseScorer):
 
             # スコア計算とタグ生成
             calculated_score = self._calculate_score(raw_score)
+            self.logger.debug(
+                f"モデル '{self.model_name}' 生の結果はTensorなのでfloatに変換: {calculated_score}"
+            )
             score_tag = self._get_score_tag(calculated_score)
             results.append(self._generate_result(raw_score, score_tag))
 

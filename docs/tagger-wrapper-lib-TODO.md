@@ -54,188 +54,53 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
 
       ```python
       class BaseTagger(ABC):
-          def __init__(self, model_name: str):
-              """BaseTagger を初期化します。
-              Args:
-                  model_name (str): モデルの名前。
-              """
+          def __init__(
+              self,
+              model_name: str,
+          ):
+              # 基本属性を設定
               self.model_name = model_name
               self.config: dict[str, Any] = load_model_config()[model_name]
+              self.model_path = self.config["model_path"]
               self.device = self.config["device"]
+
+              # モデルインスタンスと他の共通属性
               self.model: dict[str, Any] = {}
-              self.model_state = "unloaded"  # 初期状態: モデル未ロード
               self.logger = logging.getLogger(__name__)
 
-          def __enter__(self) -> "BaseTagger":
-              self.load_or_restore_model()
-              return self
-
-          def __exit__(self, exception_type: type[Exception], exception_value: Exception, traceback: Any) -> None:
-              if self.is_on_gpu():
-                  self.cache_to_main_memory()
-
-          def _load_model(self) -> None:
-              """
-              モデルファクトリを使用してモデルを読み込みます。
-
-              Raises:
-                  Exception: モデル読み込み時に発生した例外をそのまま伝播します。
-              """
-              self.model = create_model(self.config)
-              self.model_state = f"on_{self.device}"  # "on_cuda" または "on_cpu"
-
-          def load_or_restore_model(self) -> None:
-              """
-              モデルの状態に基づいて、必要な場合のみロードまたは復元します。
-              """
-              if not self.is_model_loaded():
-                  # モデルが読み込まれていない場合
-                  self.logger.debug(f"モデル '{self.model_name}' をロードします")
-                  self._load_model()
-              elif self.needs_gpu_restoration():
-                  # CPUにキャッシュされていて、GPUに戻す必要がある場合
-                  self.logger.debug(f"モデル '{self.model_name}' をGPUに復元します")
-                  self._restore_from_main_memory()
-
-          def _release_model(self) -> None:
-              """
-              モデルをメモリから解放し、GPUキャッシュをクリアします。
-              """
-              if self.model is not None:
-                  self.model_state = "unloaded"  # モデル解放
-                  if torch.cuda.is_available():
-                      torch.cuda.empty_cache()
-
-          def cache_to_main_memory(self) -> None:
-              """モデルをCPUメモリにキャッシュします。
-
-              モデルのすべてのコンポーネントをGPUからCPUメモリに移動します。
-              これにより、GPU上のメモリは解放されますが、モデル自体は保持されるため、
-              後で`_restore_from_main_memory()`を呼び出して再利用できます。
-
-              主な用途:
-              - 一時的にGPUメモリを解放したい場合
-              - 複数のモデルを交互に使用する場合
-              - モデル自体は保持したままGPUリソースを解放したい場合
-
-              Note:
-                  このメソッドはモデルを破棄しません。モデルを完全に解放するには
-                  `release_resources()`を使用してください。
-              """
-              # 辞書内の各要素に対して処理
-              for component_name, component in self.model.items():
-                  if component_name == "pipeline":
-                      # パイプラインの場合は内部モデルを移動
-                      if hasattr(component, "model"):
-                          component.model.to("cpu")
-                      self.logger.debug(
-                          f"[{self.__class__.__name__}] パイプライン '{component_name}' をCPUに移動しました"
-                      )
-                  elif hasattr(component, "to"):  # toメソッドを持つ場合のみCPUに移動
-                      component.to("cpu")
-                      self.logger.debug(
-                          f"[{self.__class__.__name__}] コンポーネント '{component_name}' をCPUに移動しました"
-                      )
-
-              if self.is_on_gpu():
-                  torch.cuda.empty_cache()
-
-              # 処理完了のログ
-              self.logger.info(
-                  f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリにキャッシュしました。"
-              )
-              self.model_state = "on_cpu"
-
-          def _restore_from_main_memory(self) -> None:
-              """CPUにキャッシュされたモデルを指定デバイスCUDAに復元します。
-
-              `cache_to_main_memory()`を使用してCPUに移動したモデルを、
-              設定されたデバイスself.device、CUDAに戻します。
-              これにより、モデルは再び高速推論の準備が整います。
-
-              主な用途:
-              - キャッシュしておいたモデルを再度使用する前
-              - CUDA上での処理が必要になった時
-              """
-              # 辞書内の各要素に対して処理
-              for component_name, component in self.model.items():
-                  if component_name == "pipeline":
-                      # パイプラインの場合は内部モデルを移動
-                      if hasattr(component, "model"):
-                          component.model.to(self.device)
-                      self.logger.debug(
-                          f"[{self.__class__.__name__}] パイプライン '{component_name}' を{self.device}に移動しました"
-                      )
-                  elif hasattr(component, "to"):  # toメソッドを持つ場合のみデバイスに移動
-                      component.to(self.device)
-                      self.logger.debug(
-                          f"[{self.__class__.__name__}] コンポーネント '{component_name}' を{self.device}に移動しました"
-                      )
-
-              # 処理完了のログ
-              self.logger.info(
-                  f"[{self.__class__.__name__}] '{self.model_name}' をメインメモリから復元しました。"
-              )
-              self.model_state = f"on_{self.device}"
-
-          def release_resources(self) -> None:
-              """モデルへの参照を解放し、メモリリソースを完全に解放します。
-
-              このメソッドは`_release_model()`を呼び出してモデルへの参照を削除し、
-              Pythonのガベージコレクションによってメモリを解放できるようにします。
-
-              子クラスでは、このメソッドをオーバーライドして、モデル固有の
-              追加リソース解放処理を実装できます。
-
-              主な用途:
-              - メモリ使用量を最小化する必要がある場合
-              - モデルを完全に解放する場合
-              - 新しいモデルをロードする前に既存のモデルを解放する場合
-              """
-              self._release_model()
-
           @abstractmethod
-          def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-              """画像からタグを予測します。
-              Args:
-                  images (list[Image.Image]): 予測する画像のリスト
-
-              Returns:
-                  list[dict[str, Any]]: 各画像の予測結果を含む辞書のリスト
+          def __enter__(self) -> "BaseTagger":
+              """
+              モデルの状態に基づいて、必要な場合のみロードまたは復元
               """
               pass
 
-          def is_model_loaded(self) -> bool:
-              """モデルがロード済みか確認"""
-              return self.model_state != "unloaded"
+          def __exit__(self, exception_type: type[Exception], exception_value: Exception, traceback: Any) -> None:
+              self.model = ModelLoad.cache_to_main_memory(self.model_name, self.model)
 
-          def is_on_gpu(self) -> bool:
-              """モデルがGPU上にあるか確認"""
-              return self.model_state == f"on_{self.device}" and "cuda" in self.device
+          @abstractmethod
+          def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
+              """画像からタグを予測します。"""
+              pass
 
-          def is_on_cpu(self) -> bool:
-              """モデルがCPU上にあるか確認"""
-              return self.model_state == "on_cpu"
+          @abstractmethod
+          def _generate_result(self, model_output: Any, score_tag: str) -> dict[str, Any]:
+          """標準化された結果の辞書を生成します。
 
-          def needs_gpu_restoration(self) -> bool:
-              """モデルがCPUにあり、GPUに戻す必要があるか確認"""
-              return self.is_on_cpu() and "cuda" in self.device
+          Args:
+              model_name (str): モデルの名前。
+              model_output: モデルの出力。
+              score_tag (str)-各サブクラスでスコアを変換したタグ
 
-          def _generate_result(self, model_output: Any, tags: list[str]) -> dict[str, Any]:
-              """標準化された結果の辞書を生成します。
+          Returns:
+              dict: モデル出力、モデル名、スコアタグを含む辞書。
+          """
+          return {
+              "model_name": self.model_name,
+              "model_output": model_output,
+              "tags": tag_list,
+          }
 
-              Args:
-                  model_output: モデルの生の出力。
-                  tags (list[str]): 生成されたタグのリスト。
-
-              Returns:
-                  dict: モデル出力、モデル名、タグを含む辞書。
-              """
-              return {
-                  "model_name": self.model_name,
-                  "model_output": model_output,
-                  "tags": tags,
-              }
       ```
 
   - [x] モデルタイプ別の中間抽象クラスの設計
@@ -252,17 +117,15 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
               Args:
                   model_name (str): モデルの名前。
               """
-              super().__init__(model_name)
-              self.processor = None
+              super().__init__(model_name=model_name)
+              # 設定ファイルから追加パラメータを取得
+              self.max_length = self.config.get("max_length", 75)
+              self.processor_path = self.config.get("processor_path", self.model_path)
+              self.processor = None  # __enter__でロード
+
 
           def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-              """画像からタグを予測します。
-              Args:
-                  images (list[Image.Image]): 予測する画像のリスト
-
-              Returns:
-                  list[dict[str, Any]]: 各画像の予測結果を含む辞書のリスト
-              """
+              """画像からタグを予測します。"""
               results = []
               for image in images:
                   # 前処理
@@ -307,50 +170,47 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
                   list[str]: タグのリスト
               """
               pass
+
+          def __enter__(self) -> "TransformerModelTagger":
+              """モデルとプロセッサをロードします。"""
+              # 親クラスの__enter__を呼び出し
+              super().__enter__()
+
+              # Transformers固有の初期化処理
+              if "processor" not in self.model:
+                  from transformers import AutoProcessor
+                  self.model["processor"] = AutoProcessor.from_pretrained(self.processor_path)
+
+              return self
       ```
 
     - PipelineModelTagger クラス:
 
       ```python
       class PipelineModelTagger(BaseTagger):
-          """パイプラインインターフェースを使用するモデル用の抽象クラス。
-          標準化されたパイプラインAPIを持つモデルの基底クラスとして機能します。
-          """
+          """パイプラインインターフェースを使用するモデル用の抽象クラス。"""
           def __init__(self, model_name: str):
               """PipelineModelTagger を初期化します。
               Args:
                   model_name (str): モデルの名前。
               """
-              super().__init__(model_name)
-              self.tag_prefix = self.config.get("tag_prefix", "")
+              super().__init__(model_name=model_name)
+              # 設定ファイルから追加パラメータを取得
+              self.threshold = self.config.get("threshold", 0.35)
 
           def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-              """パイプラインモデルで画像からタグを予測します。
-              Args:
-                  images (list[Image.Image]): 予測する画像のリスト
-
-              Returns:
-                  list[dict[str, Any]]: 各画像の予測結果を含む辞書のリスト
-              """
+              """パイプラインモデルで画像からタグを予測します。"""
               results = []
               for image in images:
                   pipeline_model = self.model["pipeline"]
                   raw_output = pipeline_model(image)
                   self.logger.debug(f"モデル '{self.model_name}' の生の出力結果: {raw_output}")
                   tags = self._process_pipeline_output(raw_output)
-                  # 結果を標準形式で追加
                   results.append(self._generate_result(raw_output, tags))
               return results
 
           @abstractmethod
           def _process_pipeline_output(self, raw_output: Any) -> list[str]:
-              """パイプラインモデル出力からタグのリストを生成します。
-              Args:
-                  raw_output (Any): パイプラインからの生出力
-
-              Returns:
-                  list[str]: タグのリスト
-              """
               pass
       ```
 
@@ -358,25 +218,21 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
 
       ```python
       class ONNXModelTagger(BaseTagger):
-          """ONNXランタイムを使用するモデル用の抽象クラス。
-          Waifu Diffusion Taggerなどのモデルの基底クラスとして機能します。
-          """
+          """ONNXランタイムを使用するモデル用の抽象クラス。"""
           def __init__(self, model_name: str):
               """ONNXModelTagger を初期化します。
               Args:
                   model_name (str): モデルの名前。
               """
-              super().__init__(model_name)
-              self.labels = []
+              super().__init__(model_name=model_name)
+              # 設定ファイルから追加パラメータを取得
+              self.tags_path = self.config["tags_path"]
+              self.threshold = self.config.get("threshold", 0.5)
+              self.input_size = self.config.get("input_size", (448, 448))
+              self.labels = []  # __enter__でロード
 
           def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-              """画像からタグを予測します。
-              Args:
-                  images (list[Image.Image]): 予測する画像のリスト
-
-              Returns:
-                  list[dict[str, Any]]: 各画像の予測結果を含む辞書のリスト
-              """
+              """画像からタグを予測します。"""
               results = []
               for image in images:
                   # 前処理
@@ -427,17 +283,20 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
 
       ```python
       class TorchModelTagger(BaseTagger):
-          """PyTorch (非Transformers)モデルを使用する抽象クラス。
-          DeepDanbooruなどのカスタムPyTorchモデルの基底クラスとして機能します。
-          """
-          def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-              """画像からタグを予測します。
+          """PyTorch (非Transformers)モデルを使用する抽象クラス。"""
+          def __init__(self, model_name: str):
+              """TorchModelTagger を初期化します。
               Args:
-                  images (list[Image.Image]): 予測する画像のリスト
-
-              Returns:
-                  list[dict[str, Any]]: 各画像の予測結果を含む辞書のリスト
+                  model_name (str): モデルの名前。
               """
+              super().__init__(model_name=model_name)
+              # 設定ファイルから追加パラメータを取得
+              self.tags_path = self.config["tags_path"]
+              self.threshold = self.config.get("threshold", 0.5)
+              self.input_size = self.config.get("input_size", (512, 512))
+
+          def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
+              """画像からタグを予測します。"""
               results = []
               with torch.no_grad():
                   for image in images:
@@ -677,72 +536,6 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
     ```
 
     これに伴い、`BaseTagger`クラスのモデル管理メソッドも簡素化されます：
-
-    ```python
-    class BaseTagger(ABC):
-        def __init__(self, model_name: str):
-            self.model_name = model_name
-            self.config: dict[str, Any] = load_model_config()[model_name]
-            self.device = self.config["device"]
-            self.model: dict[str, Any] = {}
-            self.logger = logging.getLogger(__name__)
-
-        def __enter__(self) -> "BaseTagger":
-            self.load_or_restore_model()
-            return self
-
-        def __exit__(self, exception_type: type[Exception], exception_value: Exception, traceback: Any) -> None:
-            if self.is_on_gpu():
-                self.cache_to_main_memory()
-
-        def _load_model(self) -> None:
-            """モデルファクトリを使用してモデルを読み込みます。"""
-            self.model = create_model(self.config)
-
-        def load_or_restore_model(self) -> None:
-            """モデルの状態に基づいて、必要な場合のみロードまたは復元します。"""
-            if not self.is_model_loaded():
-                self.logger.debug(f"モデル '{self.model_name}' をロードします")
-                self._load_model()
-            elif self.needs_gpu_restoration():
-                self.logger.debug(f"モデル '{self.model_name}' をGPUに復元します")
-                self._restore_from_main_memory()
-
-        def _release_model(self) -> None:
-            """モデルをメモリから解放します。"""
-            if self.model:
-                release_model(self.model_name)
-                self.model = {}
-
-        def cache_to_main_memory(self) -> None:
-            """モデルをCPUメモリにキャッシュします。"""
-            cache_model_to_cpu(self.model_name, self.model)
-
-        def _restore_from_main_memory(self) -> None:
-            """CPUにキャッシュされたモデルを指定デバイスに復元します。"""
-            restore_model_to_device(self.model_name, self.model, self.device)
-
-        def release_resources(self) -> None:
-            """モデルへの参照を解放し、メモリリソースを完全に解放します。"""
-            self._release_model()
-
-        def is_model_loaded(self) -> bool:
-            """モデルがロード済みか確認"""
-            return get_model_state(self.model_name) != "unloaded"
-
-        def is_on_gpu(self) -> bool:
-            """モデルがGPU上にあるか確認"""
-            state = get_model_state(self.model_name)
-            return state.startswith("on_cuda")
-
-        def is_on_cpu(self) -> bool:
-            """モデルがCPU上にあるか確認"""
-            return get_model_state(self.model_name) == "on_cpu"
-
-        def needs_gpu_restoration(self) -> bool:
-            """モデルがCPUにあり、GPUに戻す必要があるか確認"""
-            return self.is_on_cpu() and "cuda" in self.device
-    ```
 
     この改善により、モデルのキャッシュ管理ロジックが`model_factory.py`に集約され、`BaseTagger`クラスはより高レベルのインターフェースとして機能します。また、モデルの状態管理がグローバルに行われるため、複数のインスタンス間での一貫性も確保されます。
 
