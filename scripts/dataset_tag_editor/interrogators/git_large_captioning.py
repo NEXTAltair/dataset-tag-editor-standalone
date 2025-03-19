@@ -33,3 +33,16 @@ class GITLargeCaptioning:
             max_length=settings.current.interrogator_max_length,
         )
         return self.processor.batch_decode(ids, skip_special_tokens=True)
+
+
+
+        inputs = self.processor(images=image, return_tensors="pt").to(device)
+        ids = self.model.generate(
+            pixel_values=inputs.pixel_values,
+            max_length=settings.current.interrogator_max_length,
+        )
+        return self.processor.batch_decode(ids, skip_special_tokens=True)
+
+
+        inputs = self.processor(images=image, return_tensors="pt").to(device)
+        ids = self.model.generate(**inputs)

@@ -4,14 +4,15 @@
 """
 
 from pytest_bdd import given, scenarios, then, when
+
 from scorer_wrapper_lib.core.utils import load_model_config  # type: ignore
 from scorer_wrapper_lib.scorer_registry import (  # type: ignore
-    register_scorers,
     get_cls_obj_registry,
     list_available_scorers,
+    register_scorers,
 )
 
-scenarios("../features/scorer_registry.feature")
+scenarios("../features/registry.feature")
 
 
 @given("モデル設定TOMLファイルが存在する", target_fixture="test_config_toml")

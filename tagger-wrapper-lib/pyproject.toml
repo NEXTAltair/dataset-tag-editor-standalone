@@ -1,0 +1,118 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+[tool.hatch.build.targets.wheel]
+packages = ["src/tagger_wrapper_lib"]
+
+[project]
+name = "tagger-wrapper-lib"
+version = "0.1.0"
+description = "画像アノテーションモデルのラッパーライブラリ"
+readme = "README.md"
+requires-python = ">=3.12.4"
+license = "MIT"
+authors = [{ name = "Your Name", email = "your.email@example.com" }]
+keywords = [
+    "ai",
+    "machine-learning",
+    "tagging",
+    "image-annotation",
+    "computer-vision",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",                   # Windows環境のみサポート
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Multimedia :: Graphics",
+]
+
+dependencies = [
+    # 基本ライブラリ
+    "numpy>=1.26.0",    # 数値計算ライブラリ
+    "pandas>=2.0.0",    # データ処理
+    "Pillow>=10.0.0",   # 画像処理ライブラリ
+    "requests>=2.31.0", # HTTP通信
+    "toml",             # 設定ファイル読み込み用
+
+    # 機械学習フレームワーク
+    "tensorflow>=2.15.0;platform_system!='Darwin'", # DeepDanbooruの依存ライブラリ
+    "torch>=2.5.1",                                 # 機械学習フレームワーク
+
+    # モデル関連
+    "accelerate>=0.26.0",                                # 大規模モデルの高速化
+    "diffusers>=0.24.0",                                 # Diffusionモデル用
+    "huggingface_hub>=0.19.0",                           # Hugging Faceからのモデルダウンロード
+    "onnxruntime>=1.16.0",                               # ONNXモデル実行環境
+    "onnxruntime-gpu>=1.16.0;platform_system!='Darwin'", # ONNXモデルのGPU実行環境､WinOSのみ
+    "safetensors>=0.4.0",                                # 安全なモデル保存形式
+    "transformers>=4.27.4",                              # Hugging Faceの各種モデル用ライブラリ
+
+    # 画像処理
+    "opencv-python>=4.8.0", # 高度な画像処理
+    "timm>=0.9.0",          # 画像モデルライブラリ
+    "torchvision>=0.16.1",  # 画像処理用PyTorchライブラリ
+
+    # ユーティリティ
+    "tqdm>=4.66.0", # 進行状況表示
+
+    # 特定モデル用
+    "deepdanbooru;platform_system!='Darwin'", # DeepDanbooruモデル用
+]
+
+[project.optional-dependencies]
+dev = [
+    # テスト関連
+    "pytest>=8.0.0",         # テストフレームワーク
+    "pytest-bdd>=8.0.0",     # BDDスタイルテスト
+    "pytest-clarity>=1.0.1", # テスト結果の可視化
+    "pytest-cov>=4.1.0",     # カバレッジ計測
+    "pytest-xdist>=3.5.0",   # 並列テスト実行
+
+    # コード品質
+    "mypy>=1.8.0",            # 型チェック
+    "ruff>=0.2.0",            # リンター・コードフォーマッター
+    "types-requests>=2.32.0", # requestsの型定義
+
+    # ユーティリティ
+    "psutil", # システムリソース監視
+]
+
+
+[tool.ruff]
+line-length = 108
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "W", "C90"]
+ignore = ["D", "E501"]                     # E501を明示的に無視
+exclude = ["__pycache__", "venv", ".venv"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.coverage.run]
+omit = ["tests/*", "*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__ == __main__:",
+    "pass",
+    "print",
+    "logger.",
+    "except",
+    "@abstractmethod",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: tests that require GPU (deselect with '-m \"not gpu\"')",
+]
