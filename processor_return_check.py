@@ -3,16 +3,58 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Optional, TypedDict
 
+import huggingface_hub
+import numpy as np
+import onnxruntime as ort
+import polars as pl
 import torch
 from PIL import Image
-from transformers import AutoModelForVision2Seq, AutoProcessor
 
 logger = logging.getLogger(__name__)
 
 config = {
-    "model_path": "microsoft/git-large-coco",
+    "model_path": "SmilingWolf/wd-swinv2-tagger-v3",
     "device": "cuda",
 }
+
+
+# 前処理された画像データを表す型定義
+class PreprocessedImage(TypedDict):
+    # TransformerModel
+    pixel_values: Optional[torch.Tensor]
+
+    # ONNXModelTagger
+    input_data: Optional[np.ndarray]
+
+
+# model_factory によって生成されるモデルのコンポーネントを表す型定義
+class ModelComponents(TypedDict):
+    # ONNXModelTagger
+    session: Optional[ort.InferenceSession]  # ONNXセッション
+    csv_path: Optional[str]  # ローカルに保存されたCSVファイルのパス
+
+
+# 画像の推論結果を人が読める形式に変換したものを表す型定義
+class predictions(TypedDict):
+    # BLIP BLIP2 GIT
+    caption: Optional[list[str]]
+
+    # ONNX
+    output_data: Optional[np.ndarray]
+
+
+def download_wd_tagger_model(model_repo: str) -> tuple[str, str]:
+    MODEL_FILENAME = "model.onnx"
+    LABEL_FILENAME = "selected_tags.csv"
+    csv_path = huggingface_hub.hf_hub_download(
+        model_repo,
+        LABEL_FILENAME,
+    )
+    model_path = huggingface_hub.hf_hub_download(
+        model_repo,
+        MODEL_FILENAME,
+    )
+    return csv_path, model_path
 
 
 class ModelLoad:
@@ -20,19 +62,28 @@ class ModelLoad:
     logger = logging.getLogger(__name__)
 
     @staticmethod
-    def load_transformer_components(
-        model_name: str, model_path: str, device: str
-    ) -> Optional[dict[str, Any]]:
+    def load_onnx_components(model_name: str, model_repo: str, device: str) -> Optional[dict[str, Any]]:
         if model_name in ModelLoad._MODEL_STATES:
             ModelLoad.logger.debug(f"モデル '{model_name}' は既に読み込まれています。")
             return None
+        # ONNXランタイムセッションの作成
+        csv_path, model_path = download_wd_tagger_model(model_repo)
 
-        # 適切なプロセッサとモデルを自動的に選択
-        processor = AutoProcessor.from_pretrained(model_path)
-        model = AutoModelForVision2Seq.from_pretrained(model_path).to(device)
+        # 利用可能なプロバイダーを取得
+        available_providers = ort.get_available_providers()
+        ModelLoad.logger.debug(f"利用可能なプロバイダー: {available_providers}")
+
+        # デバイスに基づいてプロバイダーを選択
+        if device == "cuda" and "CUDAExecutionProvider" in available_providers:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        else:
+            providers = ["CPUExecutionProvider"]
+
+        ModelLoad.logger.info(f"ONNXモデル '{model_path}' をロードしています...")
+        session = ort.InferenceSession(model_path, providers=providers)
 
         ModelLoad._MODEL_STATES[model_name] = f"on_{device}"
-        return {"model": model, "processor": processor}
+        return {"model": session, "csv_path": csv_path, "model_path": model_path}
 
     @staticmethod
     def cache_to_main_memory(model_name: str, model: dict[str, Any]) -> dict[str, Any]:
@@ -84,6 +135,20 @@ class ModelLoad:
 
         return model
 
+    @staticmethod
+    def release_model(model_name: str) -> None:
+        """
+        モデルを _LOADED_SCORERS から削除 メモリから解放し、GPU キャッシュをクリアします。
+        """
+        if model_name in ModelLoad._MODEL_STATES:
+            del ModelLoad._MODEL_STATES[model_name]
+
+        # GPU メモリをクリア
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        ModelLoad.logger.info(f"モデル '{model_name}' を解放しました。")
+
 
 # プロセッサの出力を表す型定義
 class ProcessorOutput(TypedDict):
@@ -102,6 +167,7 @@ class BaseTagger(ABC):
         """
         self.model_name = model_name
         self.config: dict[str, Any] = config
+
         self.model_path = self.config["model_path"]
         self.device = self.config.get("device", "cuda")
 
@@ -116,37 +182,40 @@ class BaseTagger(ABC):
     def __exit__(self, exception_type: type[Exception], exception_value: Exception, traceback: Any) -> None:
         pass
 
-    @abstractmethod
     def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-        """画像リストを処理し、アノテーション結果を返します。
+        """画像からタグを予測します。"""
+        results = []
+        for image in images:
+            try:
+                processed_image = self._preprocess_image(image)
+                # モデル推論
+                predictions = self._run_inference(processed_image)
+                # 後処理してタグに変換
+                annotations = self._postprocess_output(predictions)
+                # 結果を標準形式で追加
+                results.append(self._generate_result(predictions, annotations))
+            except ValueError as e:
+                self.logger.error(f"推論生成中のエラー: {e}")
+                raise
+        return results
 
-        Args:
-            images (list[Image.Image]): 処理対象の画像リスト。
-
-        Returns:
-            list[dict]: アノテーション結果を含む辞書のリスト。
-        """
+    @abstractmethod
+    def _preprocess_image(self, image: Image.Image) -> Any:
+        """画像を前処理してモデル入力形式に変換します。"""
         pass
 
-    def _generate_result(self, model_output: Any, annotation_list: list[str]) -> dict[str, Any]:
-        """標準化された結果の辞書を生成します。
-
-        Args:
-            model_name (str): モデルの名前。
-            model_output: モデルの出力。
-            annotation_list (list[str]): 各サブクラスでタグを変換したタグリスト
-
-        Returns:
-            dict: モデル出力、モデル名、タグリストを含む辞書。
-        """
-        return {
-            "model_name": self.model_name,
-            "model_output": model_output,
-            "annotation": annotation_list,
-        }
+    @abstractmethod
+    def _run_inference(self, processed_image: Any) -> Any:
+        """モデル推論を実行します。"""
+        pass
 
     @abstractmethod
-    def _calculate_annotation(self, raw_output: Any) -> float:
+    def _postprocess_output(self, raw_predictions: Any) -> Any:
+        """モデル出力を後処理してタグに変換します。"""
+        pass
+
+    @abstractmethod
+    def _calculate_annotation(self, raw_output: Any) -> Any:
         """モデルの生出力からタグを計算します。
 
         Args:
@@ -169,27 +238,48 @@ class BaseTagger(ABC):
         """
         pass
 
+    def _generate_result(self, model_output: Any, annotation_list: list[str]) -> dict[str, Any]:
+        """標準化された結果の辞書を生成します。
 
-class TransformerModel(BaseTagger):
-    """Transformersライブラリを使用するモデル用の抽象クラス。
-    BLIP、BLIP2、GITなどのHugging Face Transformersベースのモデルの基底クラスとして機能します。
+        Args:
+            model_name (str): モデルの名前。
+            model_output: モデルの出力。
+            annotation_list (list[str]): 各サブクラスでアノテーションを計算したリスト
+
+        Returns:
+            dict: モデル出力、モデル名、タグリストを含む辞書。
+        """
+        return {
+            "model_name": self.model_name,
+            "model_output": model_output,
+            "annotation": annotation_list,
+        }
+
+
+class ONNXModelTagger(BaseTagger):
+    """ONNXランタイムを使用するモデル用の抽象クラス。
+    本質的にはWD-Tagger用のクラス
     """
 
     def __init__(self, model_name: str):
-        """TransformerModel を初期化します。
+        """ONNXModelTagger を初期化します。
         Args:
             model_name (str): モデルの名前。
         """
-        super().__init__(model_name)
+        super().__init__(model_name=model_name)
         # 設定ファイルから追加パラメータを取得
-        self.max_length = self.config.get("max_length", 75)
-        self.processor_path = self.config.get("processor_path", None)
+        self.labels: list[str] = []  # __enter__でロード
 
-    def __enter__(self) -> "TransformerModel":
+        # タグカテゴリ用のインデックス
+        self.rating_indexes: list[int] = []
+        self.general_indexes: list[int] = []
+        self.character_indexes: list[int] = []
+
+    def __enter__(self) -> "ONNXModelTagger":
         """
         モデルの状態に基づいて、必要な場合のみロードまたは復元
         """
-        loaded_model = ModelLoad.load_transformer_components(
+        loaded_model = ModelLoad.load_onnx_components(
             self.model_name,
             self.model_path,
             self.device,
@@ -197,71 +287,171 @@ class TransformerModel(BaseTagger):
         if loaded_model is not None:
             self.components = loaded_model
         self.components = ModelLoad.restore_model_to_cuda(self.model_name, self.device, self.components)
+
+        # ラベルとカテゴリインデックスをロード
+        self._load_labels()
+
         return self
 
     def __exit__(self, exception_type: type[Exception], exception_value: Exception, traceback: Any) -> None:
         self.components = ModelLoad.cache_to_main_memory(self.model_name, self.components)
 
-    def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-        """画像からタグを予測します。"""
-        results = []
-        for image in images:
-            try:
-                processed_image = self._preprocess_image(image)
-                # モデル推論
-                outputs = self._run_inference(processed_image)
-                # 後処理してタグに変換
-                annotations = self._postprocess_output(outputs)
-                # 結果を標準形式で追加
-                results.append(self._generate_result(outputs, annotations))
-            except ValueError as e:
-                self.logger.error(f"前処理エラー: {e}")
-                raise
-        return results
+    def _load_labels(self):
+        """ラベル情報をロードし、カテゴリごとのインデックスを設定します。"""
+        # ラベルファイルをpolarsで読み込み
+        tags_df = pl.read_csv(self.components["csv_path"])
 
-    def _preprocess_image(self, image: Image.Image) -> ProcessorOutput:
-        """画像を前処理してモデル入力形式に変換します。
+        # ラベル名を取得
+        self.labels = tags_df["name"].to_list()
+
+        # カテゴリインデックスを設定
+        self.rating_indexes = [i for i, cat in enumerate(tags_df["category"].to_list()) if cat == 9]
+        self.general_indexes = [i for i, cat in enumerate(tags_df["category"].to_list()) if cat == 0]
+        self.character_indexes = [i for i, cat in enumerate(tags_df["category"].to_list()) if cat == 4]
+
+    def _preprocess_image(self, image: Image.Image) -> np.ndarray:
+        # 透明部分の処理（条件分岐方式）
+        canvas = Image.new("RGB", image.size, (255, 255, 255))
+        if image.mode == "RGBA":
+            canvas.paste(image, mask=image.split()[3])
+        else:
+            canvas.paste(image)
+
+        # アスペクト比保持処理
+        width, height = canvas.size
+        max_dim = max(width, height)
+        padded = Image.new("RGB", (max_dim, max_dim), (255, 255, 255))
+        padded.paste(canvas, ((max_dim - width) // 2, (max_dim - height) // 2))
+
+        # モデル入力サイズを取得してリサイズ
+        input_shape = self.components["model"].get_inputs()[0].shape
+        target_size = input_shape[2:4] if input_shape[0] == 1 else input_shape[1:3]
+        resized = padded.resize(target_size, Image.Resampling.LANCZOS)
+
+        # BGRに変換してバッチ次元追加
+        img_array = np.array(resized, dtype=np.float32)[:, :, ::-1]
+        return np.expand_dims(img_array, axis=0)
+
+    def _run_inference(self, input_data: np.ndarray) -> dict[str, dict[str, float]]:
+        # 入出力名の取得
+        input_name = self.components["model"].get_inputs()[0].name
+        label_name = self.components["model"].get_outputs()[0].name
+
+        # 推論実行
+        results = self.components["model"].run([label_name], {input_name: input_data})
+        predictions = self._calculate_annotation(results[0])
+        return predictions
+
+    def _calculate_annotation(self, raw_output: np.ndarray) -> dict[str, dict[str, float]]:
+        """
+        モデルの生出力からタグを計算します。
+
         Args:
-            image (Image.Image): 入力画像
+            raw_output: モデルからの生出力。
 
         Returns:
-            ProcessorOutput: モデル用に処理された入力データ（pixel_valuesなどのテンソルを含む辞書）
+             dict[str, dict[str, float]]:
+            評価タグ、一般タグ、キャラクタータグの辞書。
+        # NOTE: 閾値は model_output の中に含まれている値からライブラリ使う方で取り出したほうが良い気がする
+        # デフォルト閾値 は annotation を直接タグに使う用の設定
         """
-        if self.components["processor"] is None:
-            raise ValueError("画像をTensorに変換するためのProcessorが初期化されていません。")
+        # カテゴリ別の処理を分離
+        ratings = self._extract_ratings(raw_output)
+        general_tags = self._extract_general_tags(raw_output)
+        character_tags = self._extract_character_tags(raw_output)
 
-        processor = self.components["processor"]
-        # プロセッサの出力を取得してデバイスに移動
-        processed_output: ProcessorOutput = processor(images=image, return_tensors="pt").to(self.device)
+        return {
+            "ratings": ratings,
+            "general": general_tags,
+            "character": character_tags,
+        }
 
-        print("辞書のキー:", processed_output.keys())
-        for key, tensor in processed_output.items():
-            print(f"キー: {key}, デバイス: {tensor.device}, 形状: {tensor.shape}")
+    def _postprocess_output(self, predictions: dict[str, dict[str, float]]) -> list[str]:
+        return self._get_annotation_tag(predictions)
 
-        return processed_output
+    def _get_annotation_tag(self, predictions: dict[str, dict[str, float]]) -> list[str]:
+        """全てのタグから一般タグとキャラクタータグをしきい値に基づいてタグを取得し、
+        一つのリストとして返します。
 
-    def _run_inference(self, inputs: ProcessorOutput) -> torch.Tensor:
-        """モデル推論を実行します。
         Args:
-            inputs (ProcessorOutput): モデルへの入力データ
+            predictions (dict[str, dict[str, float]]):
+                'general'と'character'をキーとする予測結果の辞書。
+                各値は、タグ名と確率値のペアを含む辞書。
 
         Returns:
-            torch.Tensor: モデルからの出力
+            list[str]: 選択されたタグのリスト。エスケープ処理済み。
         """
-        model = self.components["model"]
+        # 一般タグの処理
+        general_tags = predictions["general"]
+        general_probs = np.array(list(general_tags.values()))
+        general_threshold = self._calculate_mcut_threshold(general_probs)
+        general_threshold = max(0.35, general_threshold)  # 最低閾値を保証
 
-        model_out = model.generate(**inputs)
-        print(f"推論結果のデバイス: {model_out.device}, 形状: {model_out.shape}")
-        return model_out
+        # キャラクタータグの処理
+        character_tags = predictions["character"]
+        character_probs = np.array(list(character_tags.values()))
+        character_threshold = self._calculate_mcut_threshold(character_probs)
+        character_threshold = max(0.85, character_threshold)  # 最低閾値を保証
 
-    def _postprocess_output(self, outputs: Any) -> list[str]:
-        # BLIP モデルの出力後処理を実装
-        processor = self.components["processor"]
-        return processor.batch_decode(outputs, skip_special_tokens=True)
+        # 閾値以上のタグを選択し、エスケープ処理を適用
+        selected_general = [
+            tag.replace("(", r"\(").replace(")", r"\)")
+            for tag, prob in general_tags.items()
+            if prob > general_threshold
+        ]
+        selected_character = [
+            tag.replace("(", r"\(").replace(")", r"\)")
+            for tag, prob in character_tags.items()
+            if prob > character_threshold
+        ]
+
+        # 全てのタグを結合して返す
+        return selected_general + selected_character
+
+    def _extract_ratings(self, output_data: np.ndarray) -> dict[str, float]:
+        """評価タグを抽出します。"""
+        # ラベルと予測値をマッピング
+        labels = list(zip(self.labels, output_data[0].astype(float)))
+        # 評価タグのみ取得
+        ratings_names = [labels[i] for i in self.rating_indexes]
+        return dict(ratings_names)
+
+    def _extract_general_tags(self, output_data: np.ndarray) -> dict[str, float]:
+        """一般タグを抽出します。"""
+        # ラベルと予測値をマッピング
+        labels = list(zip(self.labels, output_data[0].astype(float)))
+        # 一般タグのみ取得
+        general_names = [labels[i] for i in self.general_indexes]
+        return dict(general_names)
+
+    def _extract_character_tags(self, output_data: np.ndarray) -> dict[str, float]:
+        """キャラクタータグを抽出します。"""
+        # ラベルと予測値をマッピング
+        labels = list(zip(self.labels, output_data[0].astype(float)))
+        # キャラクタータグのみ取得
+        character_names = [labels[i] for i in self.character_indexes]
+        return dict(character_names)
+
+    def _calculate_mcut_threshold(self, probs: np.ndarray) -> float:
+        """Maximum Cut Thresholding (MCut)アルゴリズムで閾値を計算します。"""
+        sorted_probs = probs[probs.argsort()[::-1]]
+        if len(sorted_probs) <= 1:
+            return 0.0
+        difs = sorted_probs[:-1] - sorted_probs[1:]
+        t = difs.argmax()
+        return (sorted_probs[t] + sorted_probs[t + 1]) / 2
 
 
 if __name__ == "__main__":
-    with BlipTransformerModel("git-large-coco") as tagger:
+    with ONNXModelTagger("wd-swinv2-tagger-v3") as tagger:
         image = Image.open(Path("tests/resources/img/1_img/file01.webp"))
         results = tagger.predict([image])
-        print(results)
+        for result in results:
+            print(result.keys())
+            print(result["model_name"])
+            for key, value in result["model_output"].items():
+                print(key)
+                print(f"{value} \n")
+                for k, v in value.items():
+                    print(f"{k}: {v} \n")
+            print(result["annotation"])
