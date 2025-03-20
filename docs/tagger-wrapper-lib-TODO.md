@@ -112,48 +112,49 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
 
   - [x] モデルタイプ別の中間抽象クラスの設計
 
-    - TransformerModelTagger クラス:
+    - TransformerModel クラス:
 
     実装済み
-    BLIPプリプロセッサとかはTransformersライブラリから BLIPやBLIP2を指定しなくても
+    BLIP プリプロセッサとかは Transformers ライブラリから BLIP や BLIP2 を指定しなくても
     AutoProcessor でなんとかなった
 
     - PipelineModelTagger クラス:
 
     コレ使うやつないな
-      ```python
-      class PipelineModelTagger(BaseTagger):
-          """パイプラインインターフェースを使用するモデル用の抽象クラス。"""
-          def __init__(self, model_name: str):
-              """PipelineModelTagger を初期化します。
-              Args:
-                  model_name (str): モデルの名前。
-              """
-              super().__init__(model_name=model_name)
-              # 設定ファイルから追加パラメータを取得
-              self.threshold = self.config.get("threshold", 0.35)
 
-          def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
-              """パイプラインモデルで画像からタグを予測します。"""
-              results = []
-              for image in images:
-                  pipeline_model = self.model["pipeline"]
-                  raw_output = pipeline_model(image)
-                  self.logger.debug(f"モデル '{self.model_name}' の生の出力結果: {raw_output}")
-                  annotations = self._process_pipeline_output(raw_output)
-                  results.append(self._generate_result(raw_output, annotations))
-              return results
+    ```python
+    class PipelineModelTagger(BaseTagger):
+        """パイプラインインターフェースを使用するモデル用の抽象クラス。"""
+        def __init__(self, model_name: str):
+            """PipelineModelTagger を初期化します。
+            Args:
+                model_name (str): モデルの名前。
+            """
+            super().__init__(model_name=model_name)
+            # 設定ファイルから追加パラメータを取得
+            self.threshold = self.config.get("threshold", 0.35)
 
-          @abstractmethod
-          def _process_pipeline_output(self, raw_output: Any) -> list[str]:
-              pass
-      ```
+        def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
+            """パイプラインモデルで画像からタグを予測します。"""
+            results = []
+            for image in images:
+                pipeline_model = self.model["pipeline"]
+                raw_output = pipeline_model(image)
+                self.logger.debug(f"モデル '{self.model_name}' の生の出力結果: {raw_output}")
+                annotations = self._process_pipeline_output(raw_output)
+                results.append(self._generate_result(raw_output, annotations))
+            return results
 
-    - ONNXModelTagger クラス:
+        @abstractmethod
+        def _process_pipeline_output(self, raw_output: Any) -> list[str]:
+            pass
+    ```
+
+    - ONNXModel クラス:
 
     実装済み
     動くものはできたが､前処理などライブラリ任せにできない
-    WD-Taggerリポジトリとtagedditerリポジトリとで画像前処理のやり方が違ったり
+    WD-Tagger リポジトリと tagedditer リポジトリとで画像前処理のやり方が違ったり
     結果に同影響が出るのか
 
     - TorchModelTagger クラス:
@@ -226,20 +227,21 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
   モデルクラスは 3 階層の構造で実装します:
 
   1. `BaseTagger`: すべてのタガーの抽象基底クラス
-  2. モデルタイプ別中間クラス: `TransformerModelTagger`, `PipelineModelTagger`, `ONNXModelTagger`, `TorchModelTagger`
+  2. モデルタイプ別中間クラス: `TransformerModel`, `PipelineModelTagger`, `ONNXModel`, `TorchModelTagger`
   3. 具体的なモデル実装クラス: 各モデルの独自処理を実装した最終的なクラス
 
   各モデルタイプ特有の引数と`__enter__`メソッドを含めた具体的なモデル実装クラスの詳細：
 
   ## TransformerModel ベースのタガー
 
-    BLIP BLIP2 GITモデルで処理が違ったりしなさそうなのでモデルごとのクラスは不要
-    # TODO: テストの時チチェック
+  BLIP BLIP2 GIT モデルで処理が違ったりしなさそうなのでモデルごとのクラスは不要
+
+  # TODO: テストの時チチェック
 
   ## ONNXModel ベースのタガー
 
-    ONNX の中間クラスが実質 WD-Taggerクラスになっている
-    ほかのONNXモデルが増えたらモデルクラスは追加するだろう
+  ONNX の中間クラスが実質 WD-Tagger クラスになっている
+  ほかの ONNX モデルが増えたらモデルクラスは追加するだろう
 
   ## TorchModel ベースのタガー
 
@@ -307,11 +309,11 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
 
      - 共通パラメータ: `model_name`, `model_type`, `model_path`, `device`（デフォルト: "cuda"）
 
-  2. **TransformerModelTagger**
+  2. **TransformerModel**
 
      - 追加パラメータ: `max_length`（キャプション生成長）
 
-  3. **ONNXModelTagger**
+  3. **ONNXModel**
 
      - 追加パラメータ: `annotations_path`, `threshold`, `input_size`
 
@@ -458,11 +460,11 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
   - [ ] モデルタイプ別中間抽象クラスの実装
 
     - [ ] `src/tagger_wrapper_lib/core/transformer_model.py`
-      - [ ] `TransformerModelTagger`クラスの実装
+      - [ ] `TransformerModel`クラスの実装
       - [ ] モデルとプロセッサのロード処理
       - [ ] 抽象メソッド`_preprocess_image`, `_run_inference`, `_postprocess_output`の定義
     - [ ] `src/tagger_wrapper_lib/core/onnx_model.py`
-      - [ ] `ONNXModelTagger`クラスの実装
+      - [ ] `ONNXModel`クラスの実装
       - [ ] ONNX セッションとラベルのロード処理
       - [ ] 前処理・推論・後処理メソッドの実装
     - [ ] `src/tagger_wrapper_lib/core/torch_model.py`

@@ -1,62 +1,79 @@
-[wd-v1-4-vit-tagger]
-threshold = 0.35
+[idolsankaku-eva02-large-tagger-v1]
+model_path = "deepghs/idolsankaku-eva02-large-tagger-v1"
+class = "WDTagger"
 
-[wd-v1-4-convnext-tagger]
-threshold = 0.35
-
-[wd-v1-4-vit-tagger-v2]
-threshold = 0.3537
+[idolsankaku-swinv2-tagger-v1]
+model_path = "deepghs/idolsankaku-swinv2-tagger-v1"
+class = "WDTagger"
 
 [wd-v1-4-convnext-tagger-v2]
-threshold = 0.3685
+model_path = "SmilingWolf/wd-v1-4-convnext-tagger-v2"
+class = "WDTagger"
 
 [wd-v1-4-convnextv2-tagger-v2]
-threshold = 0.371
+model_path = "SmilingWolf/wd-v1-4-convnextv2-tagger-v2"
+class = "WDTagger"
 
 [wd-v1-4-moat-tagger-v2]
-threshold = 0.3771
+model_path = "SmilingWolf/wd-v1-4-moat-tagger-v2"
+class = "WDTagger"
 
 [wd-v1-4-swinv2-tagger-v2]
-threshold = 0.3771
+model_path = "SmilingWolf/wd-v1-4-swinv2-tagger-v2"
+class = "WDTagger"
 
 [wd-vit-tagger-v3]
-threshold = 0.2614
+model_path = "SmilingWolf/wd-vit-tagger-v3"
+class = "WDTagger"
 
 [wd-convnext-tagger-v3]
-threshold = 0.2682
+model_path = "SmilingWolf/wd-convnext-tagger-v3"
+class = "WDTagger"
 
 [wd-swinv2-tagger-v3]
-threshold = 0.2653
+model_path = "SmilingWolf/wd-swinv2-tagger-v3"
+class = "WDTagger"
 
 [wd-vit-large-tagger-v3]
-threshold = 0.2606
+model_path = "SmilingWolf/wd-vit-large-tagger-v3"
+class = "WDTagger"
 
 [wd-eva02-large-tagger-v3]
-threshold = 0.5296
+model_path = "SmilingWolf/wd-eva02-large-tagger-v3"
+class = "WDTagger"
 
 [BLIPLargeCaptioning]
 model_path = "Salesforce/blip-image-captioning-large"
+class = "BLIPTagger"
 
 [blip2-opt-2.7b]
 model_path = "Salesforce/blip2-opt-2.7b"
+class = "BLIP2Tagger"
 
 [blip2-opt-2.7b-coco]
 model_path = "Salesforce/blip2-opt-2.7b-coco"
+class = "BLIP2Tagger"
 
 [blip2-opt-6.7b]
 model_path = "Salesforce/blip2-opt-6.7b"
+class = "BLIP2Tagger"
 
 [blip2-opt-6.7b-coco]
 model_path = "Salesforce/blip2-opt-6.7b-coco"
+class = "BLIP2Tagger"
 
 [blip2-flan-t5-xl]
 model_path = "Salesforce/blip2-flan-t5-xl"
+class = "BLIP2Tagger"
 
 [blip2-flan-t5-xl-coco]
 model_path = "Salesforce/blip2-flan-t5-xl-coco"
+class = "BLIP2Tagger"
 
 [blip2-flan-t5-xxl]
 model_path = "Salesforce/blip2-flan-t5-xxl"
+class = "BLIP2Tagger"
 
 [GITLargeCaptioning]
 model_path = "microsoft/git-large-coco"
+class = "GITTagger"

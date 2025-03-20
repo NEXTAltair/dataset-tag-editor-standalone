@@ -48,12 +48,12 @@ def recursive_subclasses(cls: Type[T]) -> set[Type[T]]:
 
 
 def gather_available_classes(directory: str) -> dict[str, ModelClass]:
-    """score_models 内の全モジュールから、BaseTagger のサブクラスまたは
+    """tagger_models 内の全モジュールから、BaseTagger のサブクラスまたは
     predict() メソッドを持つクラスを抽出して返す"""
     available: dict[str, ModelClass] = {}
     module_files = list_module_files(directory)
     for module_file in module_files:
-        module = import_module_from_file(module_file, "tagger_wrapper_lib.score_models")
+        module = import_module_from_file(module_file, "tagger_wrapper_lib.tagger_models")
         if module is None:
             continue
         for name, obj in inspect.getmembers(module, inspect.isclass):
@@ -77,7 +77,7 @@ def register_taggers() -> dict[str, ModelClass]:
     logger.debug(f"設定ファイル読み込み完了: {len(config)}モデル: {list(config.keys())}")
 
     # 利用可能なクラスを収集
-    target_directory = "score_models"
+    target_directory = "tagger_models"
     available = gather_available_classes(target_directory)
     logger.debug(f"利用可能クラス一覧: {len(available)}クラス: {list(available.keys())}")
 
@@ -94,7 +94,7 @@ def register_taggers() -> dict[str, ModelClass]:
             logger.debug(f"モデル登録: {model_name} → {desired_class}")
         else:
             logger.error(
-                f"モデル '{model_name}' で指定されたクラス '{desired_class}' は、'score_models' ディレクトリ内に定義されていません。クラス名が正しいか、または 'score_models' ディレクトリにクラスファイルが存在するか確認してください。"
+                f"モデル '{model_name}' で指定されたクラス '{desired_class}' は、'tagger_models' ディレクトリ内に定義されていません。クラス名が正しいか、または 'tagger_models' ディレクトリにクラスファイルが存在するか確認してください。"
             )
 
     logger.debug(f"register_taggers完了: 最終レジストリ状態: {list(_MODEL_CLASS_OBJ_REGISTRY.keys())}")

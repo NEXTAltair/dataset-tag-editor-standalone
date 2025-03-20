@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
+import huggingface_hub
 import requests
 import toml
 from tqdm import tqdm
@@ -12,10 +13,12 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 
-CONFIG_TOML = Path("config") / "models.toml"
+CONFIG_TOML = Path("config") / "taggers.toml"
 LOG_FILE = Path("logs/tagger_wrapper_lib.log")
 DEFAULT_CACHE_DIR = Path("models")
 DEFAULT_TIMEOUT = 30
+WD_MODEL_FILENAME = "model.onnx"
+WD_LABEL_FILENAME = "selected_tags.csv"
 
 
 def _get_cache_path(url: str, cache_dir: Path) -> Path:
@@ -123,6 +126,19 @@ def load_file(path_or_url: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> str:
             "有効なローカルパス、または直接URLを指定してください。"
             f"エラー詳細: {e}"
         ) from e
+
+
+def download_wd_tagger_model(model_repo: str) -> tuple[str, str]:
+    """WD-Taggerのモデルをダウンロードする"""
+    csv_path = huggingface_hub.hf_hub_download(
+        model_repo,
+        WD_LABEL_FILENAME,
+    )
+    model_path = huggingface_hub.hf_hub_download(
+        model_repo,
+        WD_MODEL_FILENAME,
+    )
+    return csv_path, model_path
 
 
 def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:

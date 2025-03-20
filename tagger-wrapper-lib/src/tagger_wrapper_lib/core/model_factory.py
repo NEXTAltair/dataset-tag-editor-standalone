@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Optional, Type
 
+import onnxruntime as ort
 import torch
 import torch.nn as nn
 from transformers import (
@@ -259,8 +260,28 @@ class ModelLoad:
         return {"model": model, "processor": processor}
 
     @staticmethod
-    def load_onnx_components(model_name: str, model_path: str, device: str) -> Optional[dict[str, Any]]:
-        pass
+    def load_onnx_components(model_name: str, model_repo: str, device: str) -> Optional[dict[str, Any]]:
+        if model_name in ModelLoad._MODEL_STATES:
+            ModelLoad.logger.debug(f"モデル '{model_name}' は既に読み込まれています。")
+            return None
+        # ONNXランタイムセッションの作成
+        csv_path, model_path = utils.download_wd_tagger_model(model_repo)
+
+        # 利用可能なプロバイダーを取得
+        available_providers = ort.get_available_providers()
+        ModelLoad.logger.debug(f"利用可能なプロバイダー: {available_providers}")
+
+        # デバイスに基づいてプロバイダーを選択
+        if device == "cuda" and "CUDAExecutionProvider" in available_providers:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        else:
+            providers = ["CPUExecutionProvider"]
+
+        ModelLoad.logger.info(f"ONNXモデル '{model_path}' をロードしています...")
+        session = ort.InferenceSession(model_path, providers=providers)
+
+        ModelLoad._MODEL_STATES[model_name] = f"on_{device}"
+        return {"model": session, "csv_path": csv_path}
 
     @staticmethod
     def clip_model_load(

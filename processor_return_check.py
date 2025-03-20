@@ -40,7 +40,7 @@ class predictions(TypedDict):
     caption: Optional[list[str]]
 
     # ONNX
-    output_data: Optional[np.ndarray]
+    output_data: Optional[dict[str, dict[str, float]]]
 
 
 def download_wd_tagger_model(model_repo: str) -> tuple[str, str]:
@@ -135,28 +135,6 @@ class ModelLoad:
 
         return model
 
-    @staticmethod
-    def release_model(model_name: str) -> None:
-        """
-        モデルを _LOADED_SCORERS から削除 メモリから解放し、GPU キャッシュをクリアします。
-        """
-        if model_name in ModelLoad._MODEL_STATES:
-            del ModelLoad._MODEL_STATES[model_name]
-
-        # GPU メモリをクリア
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        ModelLoad.logger.info(f"モデル '{model_name}' を解放しました。")
-
-
-# プロセッサの出力を表す型定義
-class ProcessorOutput(TypedDict):
-    pixel_values: torch.Tensor
-    # 必要に応じて他のキーを追加
-    # input_ids: Tensor
-    # attention_mask: Tensor
-
 
 class BaseTagger(ABC):
     def __init__(self, model_name: str):
@@ -189,11 +167,13 @@ class BaseTagger(ABC):
             try:
                 processed_image = self._preprocess_image(image)
                 # モデル推論
-                predictions = self._run_inference(processed_image)
-                # 後処理してタグに変換
-                annotations = self._postprocess_output(predictions)
+                raw_output = self._run_inference(processed_image)
+                # 推論結果をフォーマット
+                formatted_output = self._format_predictions(raw_output)
+                # タグを生成
+                tags = self._generate_tags(formatted_output)
                 # 結果を標準形式で追加
-                results.append(self._generate_result(predictions, annotations))
+                results.append(self._generate_result(formatted_output, tags))
             except ValueError as e:
                 self.logger.error(f"推論生成中のエラー: {e}")
                 raise
@@ -210,32 +190,13 @@ class BaseTagger(ABC):
         pass
 
     @abstractmethod
-    def _postprocess_output(self, raw_predictions: Any) -> Any:
-        """モデル出力を後処理してタグに変換します。"""
+    def _format_predictions(self, raw_output: Any) -> Any:
+        """モデルの生出力をフォーマットします。"""
         pass
 
     @abstractmethod
-    def _calculate_annotation(self, raw_output: Any) -> Any:
-        """モデルの生出力からタグを計算します。
-
-        Args:
-            raw_output: モデルからの生出力。
-
-        Returns:
-            float: 計算されたアノテーション。
-        """
-        pass
-
-    @abstractmethod
-    def _get_annotation_tag(self, annotation: float) -> list[str]:
-        """計算されたアノテーションからアノテーションタグの文字列を生成します。
-
-        Args:
-            annotation (float): 計算されたアノテーション。
-
-        Returns:
-            str: 生成されたアノテーションタグ。
-        """
+    def _generate_tags(self, raw_output: Any) -> list[str]:
+        """モデルの生出力からタグを生成します。"""
         pass
 
     def _generate_result(self, model_output: Any, annotation_list: list[str]) -> dict[str, Any]:
@@ -244,7 +205,7 @@ class BaseTagger(ABC):
         Args:
             model_name (str): モデルの名前。
             model_output: モデルの出力。
-            annotation_list (list[str]): 各サブクラスでアノテーションを計算したリスト
+            annotation_list (list[str]): 各サブクラスで
 
         Returns:
             dict: モデル出力、モデル名、タグリストを含む辞書。
@@ -339,10 +300,10 @@ class ONNXModelTagger(BaseTagger):
 
         # 推論実行
         results = self.components["model"].run([label_name], {input_name: input_data})
-        predictions = self._calculate_annotation(results[0])
-        return predictions
+        # 推論結果をフォーマット
+        return results[0]
 
-    def _calculate_annotation(self, raw_output: np.ndarray) -> dict[str, dict[str, float]]:
+    def _format_predictions(self, raw_output: np.ndarray) -> dict[str, dict[str, float]]:
         """
         モデルの生出力からタグを計算します。
 
@@ -366,15 +327,12 @@ class ONNXModelTagger(BaseTagger):
             "character": character_tags,
         }
 
-    def _postprocess_output(self, predictions: dict[str, dict[str, float]]) -> list[str]:
-        return self._get_annotation_tag(predictions)
-
-    def _get_annotation_tag(self, predictions: dict[str, dict[str, float]]) -> list[str]:
+    def _generate_tags(self, formatted_output: dict[str, dict[str, float]]) -> list[str]:
         """全てのタグから一般タグとキャラクタータグをしきい値に基づいてタグを取得し、
         一つのリストとして返します。
 
         Args:
-            predictions (dict[str, dict[str, float]]):
+            raw_output (dict[str, dict[str, float]]):
                 'general'と'character'をキーとする予測結果の辞書。
                 各値は、タグ名と確率値のペアを含む辞書。
 
@@ -382,31 +340,29 @@ class ONNXModelTagger(BaseTagger):
             list[str]: 選択されたタグのリスト。エスケープ処理済み。
         """
         # 一般タグの処理
-        general_tags = predictions["general"]
+        general_tags = formatted_output["general"]
         general_probs = np.array(list(general_tags.values()))
         general_threshold = self._calculate_mcut_threshold(general_probs)
         general_threshold = max(0.35, general_threshold)  # 最低閾値を保証
 
         # キャラクタータグの処理
-        character_tags = predictions["character"]
+        character_tags = formatted_output["character"]
         character_probs = np.array(list(character_tags.values()))
         character_threshold = self._calculate_mcut_threshold(character_probs)
         character_threshold = max(0.85, character_threshold)  # 最低閾値を保証
 
-        # 閾値以上のタグを選択し、エスケープ処理を適用
-        selected_general = [
-            tag.replace("(", r"\(").replace(")", r"\)")
-            for tag, prob in general_tags.items()
-            if prob > general_threshold
-        ]
-        selected_character = [
-            tag.replace("(", r"\(").replace(")", r"\)")
-            for tag, prob in character_tags.items()
-            if prob > character_threshold
-        ]
+        # 閾値以上のタグを選択
+        selected_general = [tag for tag, prob in general_tags.items() if prob > general_threshold]
+        selected_character = [tag for tag, prob in character_tags.items() if prob > character_threshold]
 
-        # 全てのタグを結合して返す
-        return selected_general + selected_character
+        # 全てのタグを結合
+        all_selected_tags = selected_general + selected_character
+
+        # エスケープ処理を適用
+        escaped_tags = [tag.replace("(", r"\(").replace(")", r"\)") for tag in all_selected_tags]
+
+        # 結果を返す
+        return escaped_tags
 
     def _extract_ratings(self, output_data: np.ndarray) -> dict[str, float]:
         """評価タグを抽出します。"""
@@ -439,19 +395,12 @@ class ONNXModelTagger(BaseTagger):
             return 0.0
         difs = sorted_probs[:-1] - sorted_probs[1:]
         t = difs.argmax()
-        return (sorted_probs[t] + sorted_probs[t + 1]) / 2
+        threshold = (sorted_probs[t] + sorted_probs[t + 1]) / 2
+        return threshold
 
 
 if __name__ == "__main__":
     with ONNXModelTagger("wd-swinv2-tagger-v3") as tagger:
         image = Image.open(Path("tests/resources/img/1_img/file01.webp"))
         results = tagger.predict([image])
-        for result in results:
-            print(result.keys())
-            print(result["model_name"])
-            for key, value in result["model_output"].items():
-                print(key)
-                print(f"{value} \n")
-                for k, v in value.items():
-                    print(f"{k}: {v} \n")
-            print(result["annotation"])
+        print(results[0]["annotation"])
