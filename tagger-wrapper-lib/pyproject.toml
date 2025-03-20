@@ -36,6 +36,7 @@ dependencies = [
     "Pillow>=10.0.0",   # 画像処理ライブラリ
     "requests>=2.31.0", # HTTP通信
     "toml",             # 設定ファイル読み込み用
+    "polars",           # データ処理
 
     # 機械学習フレームワーク
     "tensorflow>=2.15.0;platform_system!='Darwin'", # DeepDanbooruの依存ライブラリ
