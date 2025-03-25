@@ -50,6 +50,7 @@ dependencies = [
     "onnxruntime-gpu>=1.16.0;platform_system!='Darwin'", # ONNXモデルのGPU実行環境､WinOSのみ
     "safetensors>=0.4.0",                                # 安全なモデル保存形式
     "transformers>=4.27.4",                              # Hugging Faceの各種モデル用ライブラリ
+    "tensorflow>=2.7.0",                                 # DeepDanbooruの依存ライブラリ
 
     # 画像処理
     "opencv-python>=4.8.0", # 高度な画像処理
@@ -59,7 +60,7 @@ dependencies = [
     # ユーティリティ
     "tqdm>=4.66.0", # 進行状況表示
 
-    # 特定モデル用
+    # 特定モデル用 今のところ使ってない
     "deepdanbooru;platform_system!='Darwin'", # DeepDanbooruモデル用
 ]
 
