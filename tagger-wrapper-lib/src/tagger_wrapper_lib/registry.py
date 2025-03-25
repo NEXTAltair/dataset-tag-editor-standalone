@@ -107,9 +107,8 @@ def get_cls_obj_registry() -> dict[str, ModelClass]:
 
 
 def list_available_taggers() -> list[str]:
-    # TODO: スコアラー以外にも対応したら関数名は変更する
     """
-    register_taggersで登録された利用可能なスコアラーモデル名のリストを返す
+    register_taggersで登録された利用可能なタガーモデル名のリストを返す
 
     Returns:
         list[str]: 設定ファイルで定義され、使用可能なモデル名のリスト

@@ -42,6 +42,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
     - 主要なライブラリとして `PIL`, `torch`, `torchvision`, `timm`, `numpy`, `tqdm` などが使用されています。
 
   - [x] 参考実装 stable-diffusion-webui-wd14-tagger\scripts\tagger.py の分析
+
     - `Image` オブジェクトの初期化や、トランケートされた画像の読み込みエラーを防ぐ設定が行われています。
     - `script_callbacks` を使用して、アプリケーションの開始時や UI タブの設定時に特定の関数を呼び出します。
 
@@ -230,15 +231,11 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
   2. モデルタイプ別中間クラス: `TransformerModel`, `PipelineModelTagger`, `ONNXModel`, `TorchModelTagger`
   3. 具体的なモデル実装クラス: 各モデルの独自処理を実装した最終的なクラス
 
-  各モデルタイプ特有の引数と`__enter__`メソッドを含めた具体的なモデル実装クラスの詳細：
+  各モデルタイプ特有の引数と `__enter__`メソッドを含めた具体的なモデル実装クラスの詳細：
 
   ## TransformerModel ベースのタガー
 
-  BLIP BLIP2 GIT モデルで処理が違ったりしなさそうなのでモデルごとのクラスは不要
-
-  # TODO: テストの時チチェック
-
-  ## ONNXModel ベースのタガー
+  ONNXModel ベースのタガー
 
   ONNX の中間クラスが実質 WD-Tagger クラスになっている
   ほかの ONNX モデルが増えたらモデルクラスは追加するだろう
@@ -434,6 +431,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
     ```
 
 - [x] BDD テストシナリオ設計
+
   - [x] 基本機能のシナリオ
     - [x] 画像アノテーション機能 (tagger.feature)
     - [x] モデルレジストリ機能 (registry.feature)
@@ -453,8 +451,8 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
     - [ ] `src/tagger_wrapper_lib/core/base.py`に実装
     - [ ] スコアラーの BaseScorer 相当の抽象クラスを構築
     - [ ] `__init__`で model_name を受け取り、config から設定を読み込む
-    - [ ] `__enter__`と`__exit__`メソッドでコンテキスト管理
-    - [ ] 抽象メソッド`predict`の定義
+    - [ ] `__enter__`と `__exit__`メソッドでコンテキスト管理
+    - [ ] 抽象メソッド `predict`の定義
     - [ ] `_generate_result`メソッドで標準化された結果形式を生成
 
   - [ ] モデルタイプ別中間抽象クラスの実装
@@ -462,7 +460,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
     - [ ] `src/tagger_wrapper_lib/core/transformer_model.py`
       - [ ] `TransformerModel`クラスの実装
       - [ ] モデルとプロセッサのロード処理
-      - [ ] 抽象メソッド`_preprocess_image`, `_run_inference`, `_postprocess_output`の定義
+      - [ ] 抽象メソッド `_preprocess_image`, `_run_inference`, `_postprocess_output`の定義
     - [ ] `src/tagger_wrapper_lib/core/onnx_model.py`
       - [ ] `ONNXModel`クラスの実装
       - [ ] ONNX セッションとラベルのロード処理
@@ -474,7 +472,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
     - [ ] `src/tagger_wrapper_lib/core/pipeline_model.py`
       - [ ] `PipelineModelTagger`クラスの実装
       - [ ] パイプラインモデルの操作処理
-      - [ ] 抽象メソッド`_process_pipeline_output`の定義
+      - [ ] 抽象メソッド `_process_pipeline_output`の定義
 
   - [ ] `tagger_registry.py` の実装
 
@@ -500,6 +498,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
     - [ ] エラーハンドリングの追加
 
   - [ ] モデル実装のベース構造
+
     - [ ] `src/tagger_wrapper_lib/annotation_models/__init__.py`
     - [ ] `src/tagger_wrapper_lib/annotation_models/blip_model.py`
       - [ ] `BLIPTagger`クラスの実装
@@ -521,6 +520,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
   - [ ] WD Tagger の移行と実装
 
 - [ ] 共通処理の抽象化
+
   - [ ] 画像前処理の共通化
   - [ ] 結果後処理の共通化
 
@@ -537,6 +537,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
   - [ ] ステップ定義の実装
 
 - [ ] 統合テスト
+
   - [ ] 実際のモデルを使用したエンドツーエンドテスト
 
 ### フェーズ 5: ドキュメント整備 (優先度: 中)
@@ -554,6 +555,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
   - [ ] 設定オプションの解説
 
 - [ ] 開発者ドキュメント
+
   - [ ] 新しい tagger の追加方法
   - [ ] 拡張ポイントの説明
 
@@ -570,6 +572,7 @@ tagger-wrapper-lib は、各種画像タグ付けモデル（BLIP、DeepDanbooru
   - [ ] 並列処理の実装
 
 - [ ] dataset-tag-editor への統合
+
   - [ ] 既存コードからライブラリの利用への移行
   - [ ] 後方互換性の確保
 
@@ -623,6 +626,7 @@ tagger-wrapper-lib/
    - 高いテストカバレッジの維持
 
 4. **リソース管理**
+
    - GPU/CPU メモリの効率的な利用
    - リソースのクリーンアップ保証
 
