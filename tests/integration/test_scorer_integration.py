@@ -14,7 +14,6 @@ import psutil
 import torch
 from PIL import Image
 from pytest_bdd import given, scenarios, then, when
-
 from scorer_wrapper_lib.scorer import (
     _MODEL_INSTANCE_REGISTRY,
     evaluate,
