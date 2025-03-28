@@ -29,50 +29,61 @@ class = "WDTagger"
 [wd-convnext-tagger-v3]
 model_path = "SmilingWolf/wd-convnext-tagger-v3"
 class = "WDTagger"
+device = "cpu"
 
 [wd-swinv2-tagger-v3]
 model_path = "SmilingWolf/wd-swinv2-tagger-v3"
 class = "WDTagger"
+device = "cpu"
 
 [wd-vit-large-tagger-v3]
 model_path = "SmilingWolf/wd-vit-large-tagger-v3"
 class = "WDTagger"
+device = "cpu"
 
 [wd-eva02-large-tagger-v3]
 model_path = "SmilingWolf/wd-eva02-large-tagger-v3"
 class = "WDTagger"
+device = "cpu"
 
 [BLIPLargeCaptioning]
 model_path = "Salesforce/blip-image-captioning-large"
 class = "BLIPTagger"
 
-[blip2-opt-2.7b]
+["blip2-opt-2.7b"]
 model_path = "Salesforce/blip2-opt-2.7b"
 class = "BLIP2Tagger"
+device = "cpu"
 
 [blip2-opt-2.7b-coco]
 model_path = "Salesforce/blip2-opt-2.7b-coco"
 class = "BLIP2Tagger"
+device = "cpu"
 
-[blip2-opt-6.7b]
+["blip2-opt-6.7b"]
 model_path = "Salesforce/blip2-opt-6.7b"
 class = "BLIP2Tagger"
+device = "cpu"
 
-[blip2-opt-6.7b-coco]
+["blip2-opt-6.7b-coco"]
 model_path = "Salesforce/blip2-opt-6.7b-coco"
 class = "BLIP2Tagger"
+device = "cpu"
 
 [blip2-flan-t5-xl]
 model_path = "Salesforce/blip2-flan-t5-xl"
 class = "BLIP2Tagger"
+device = "cpu"
 
 [blip2-flan-t5-xl-coco]
 model_path = "Salesforce/blip2-flan-t5-xl-coco"
 class = "BLIP2Tagger"
+device = "cpu"
 
 [blip2-flan-t5-xxl]
 model_path = "Salesforce/blip2-flan-t5-xxl"
 class = "BLIP2Tagger"
+device = "cpu"
 
 [GITLargeCaptioning]
 model_path = "microsoft/git-large-coco"
