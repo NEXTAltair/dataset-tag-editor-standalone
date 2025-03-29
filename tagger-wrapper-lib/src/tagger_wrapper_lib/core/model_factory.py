@@ -22,7 +22,7 @@ class ModelLoad:
     _MODEL_STATES: dict[str, str] = {}
     _MEMORY_USAGE: dict[str, float] = {}
     _MODEL_LAST_USED: dict[str, float] = {}  # タイムスタンプを記録
-    _CACHE_RATIO = 0.3  # システム全体のメモリの何割までキャッシュに使用するか
+    _CACHE_RATIO = 0.5  # システム全体のメモリの何割までキャッシュに使用するか
     _MODEL_SIZES: dict[str, float] = {}  # モデルサイズをキャッシュするためのクラス変数
     logger = logging.getLogger(__name__)
 

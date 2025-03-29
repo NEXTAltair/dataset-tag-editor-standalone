@@ -11,10 +11,7 @@ launch_user.bat
 .env
 coverage.xml
 .coverage
-logs/
-scorer-wrapper-lib/logs/scorer_wrapper_lib.log
 .cursor/
-tests/logs/scorer_wrapper_lib.log
 stable-diffusion-webui-wd14-tagger/
 DeepDanbooru/
 results/
