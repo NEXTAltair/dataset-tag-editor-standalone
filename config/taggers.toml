@@ -111,3 +111,39 @@ model_path = "Minthy/ToriiGate-v0.3"
 class = "ToriiGateTagger"
 device = "cpu"
 estimated_size_gb = 37.828
+
+[deepdanbooru-v3-20211112-sgd-e28]
+model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v3-20211112-sgd-e28/deepdanbooru-v3-20211112-sgd-e28.zip"
+class = "DeepDanbooruTagger"
+device = "cuda"
+estimated_size_gb = 0.723
+# 必要に応じてチャンクサイズを調整できます
+# chunk_size = 8
+
+[deepdanbooru-v4-20200814-sgd-e30]
+model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v4-20200814-sgd-e30/deepdanbooru-v4-20200814-sgd-e30.zip"
+class = "DeepDanbooruTagger"
+device = "cuda"
+estimated_size_gb = 0.327
+# チャンクサイズを必要に応じて調整可能
+# chunk_size = 8
+
+[deepdanbooru-v3-20200915-sgd-e30]
+model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v3-20200915-sgd-e30/deepdanbooru-v3-20200915-sgd-e30.zip"
+class = "DeepDanbooruTagger"
+device = "cuda"
+estimated_size_gb = 0.698
+# chunk_size = 8  # 必要に応じて調整可能
+
+[deepdanbooru-v3-20200101-sgd-e30]
+model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v3-20200101-sgd-e30/deepdanbooru-v3-20200101-sgd-e30.zip"
+class = "DeepDanbooruTagger"
+device = "cuda"
+estimated_size_gb = 0.687
+# chunk_size = 8  # 必要に応じて調整可能
+
+[deepdanbooru-v1-20191108-sgd-e30]
+model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v1-20191108-sgd-e30/deepdanbooru-v1-20191108-sgd-e30.zip"
+class = "DeepDanbooruTagger"
+device = "cuda"
+estimated_size_gb = 0.66
