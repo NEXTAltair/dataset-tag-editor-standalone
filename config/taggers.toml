@@ -105,3 +105,9 @@ estimated_size_gb = 17.627
 model_path = "microsoft/git-large-coco"
 class = "GITTagger"
 estimated_size_gb = 1.762
+
+["ToriiGate-v0.3"]
+model_path = "Minthy/ToriiGate-v0.3"
+class = "ToriiGateTagger"
+device = "cpu"
+estimated_size_gb = 37.828
