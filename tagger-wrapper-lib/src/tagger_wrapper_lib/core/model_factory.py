@@ -27,7 +27,7 @@ class ModelLoad:
     logger = logging.getLogger(__name__)
 
     @staticmethod
-    def get_model_size(model_name: str, model: Optional[dict[str, Any]] = None) -> float:
+    def get_model_size(model_name: str) -> float:
         """モデルの推定メモリ使用量を取得（MB単位）"""
         # クラス変数にキャッシュがあるか確認
         if hasattr(ModelLoad, "_MODEL_SIZES") and model_name in ModelLoad._MODEL_SIZES:
@@ -49,9 +49,7 @@ class ModelLoad:
             )
             return size_mb
 
-        # サイズ情報がない場合
-        logger.warning(f"モデル '{model_name}' のサイズ情報が見つかりません。デフォルト値を使用します。")
-        return 1000.0  # デフォルト値: 1GB (MB単位)
+        return 0.0
 
     @staticmethod
     def get_max_cache_size() -> float:
@@ -109,15 +107,15 @@ class ModelLoad:
             current_cache_size = sum(ModelLoad._MEMORY_USAGE.values())
 
     @staticmethod
-    def cache_to_main_memory(model_name: str, model: dict[str, Any]) -> dict[str, Any]:
+    def cache_to_main_memory(model_name: str, components: dict[str, Any]) -> dict[str, Any]:
         """メモリ管理を行いながらモデルをキャッシュ"""
         if model_name in ModelLoad._MODEL_STATES and ModelLoad._MODEL_STATES[model_name] == "on_cpu":
             ModelLoad.logger.debug(f"モデル '{model_name}' は既にCPUにあります。")
             ModelLoad._MODEL_LAST_USED[model_name] = time.time()
-            return model
+            return components
 
         # モデルサイズを取得（すでに計算済みの想定）
-        model_size = ModelLoad.get_model_size(model_name, model)
+        model_size = ModelLoad.get_model_size(model_name)
         # GBに変換して表示
         model_size_gb = model_size / 1024
         ModelLoad.logger.info(f"モデル '{model_name}' の推定サイズ: {model_size_gb:.3f}GB")
@@ -127,7 +125,7 @@ class ModelLoad:
 
         # モデルをCPUに移動
         try:
-            for component_name, component in model.items():
+            for component_name, component in components.items():
                 if component_name == "pipeline":
                     if hasattr(component, "model"):
                         component.model.to("cpu")
@@ -145,11 +143,26 @@ class ModelLoad:
                 f"現在のキャッシュ使用量: {sum(ModelLoad._MEMORY_USAGE.values()):.1f}MB/{max_cache:.1f}MB）"
             )
 
-            return model
+            return components
 
         except Exception as e:
             ModelLoad.logger.error(f"モデルのキャッシュに失敗しました: {str(e)}")
-            return model
+            return components
+
+    @staticmethod
+    def _calculate_and_save_model_size(model_name: str, model_size: float) -> None:
+        """モデルサイズを計算し、キャッシュとTOMLファイルに保存します"""
+        # クラス変数にキャッシュ
+        if not hasattr(ModelLoad, "_MODEL_SIZES"):
+            ModelLoad._MODEL_SIZES = {}
+        ModelLoad._MODEL_SIZES[model_name] = model_size
+
+        # TOMLファイルにも保存
+        utils.save_model_size(model_name, model_size)
+
+        # GBに変換して表示
+        model_size_gb = model_size / 1024
+        ModelLoad.logger.info(f"モデル '{model_name}' の推定サイズを計算しました: {model_size_gb:.3f}GB")
 
     @staticmethod
     def load_transformer_components(
@@ -170,20 +183,7 @@ class ModelLoad:
             # モデルサイズの計算と保存（ロード時に実行）
             if not hasattr(ModelLoad, "_MODEL_SIZES") or model_name not in ModelLoad._MODEL_SIZES:
                 model_size = ModelLoad._calculate_transformer_size(model)
-
-                # クラス変数にキャッシュ
-                if not hasattr(ModelLoad, "_MODEL_SIZES"):
-                    ModelLoad._MODEL_SIZES = {}
-                ModelLoad._MODEL_SIZES[model_name] = model_size
-
-                # TOMLファイルにも保存
-                utils.save_model_size(model_name, model_size)
-
-                # GBに変換して表示
-                model_size_gb = model_size / 1024
-                ModelLoad.logger.info(
-                    f"モデル '{model_name}' の推定サイズを計算しました: {model_size_gb:.3f}GB"
-                )
+                ModelLoad._calculate_and_save_model_size(model_name, model_size)
 
             ModelLoad._MODEL_STATES[model_name] = f"on_{device}"
             return components
@@ -192,7 +192,7 @@ class ModelLoad:
             # メモリ不足エラーハンドリングを base.py から移動
             error_message = f"CUDAメモリ不足: モデル '{model_name}' のロード中 (デバイス: {device})"
             ModelLoad.logger.error(error_message)
-            ModelLoad.logger.error(f"元のPyTorchエラー: {e}")  # 元のエラー表示
+            ModelLoad.logger.error(f"元のPyTorchエラー: {e}")
             try:
                 if device.startswith("cuda") and torch.cuda.is_available():
                     ModelLoad.logger.error(torch.cuda.memory_summary(device=device))  # メモリサマリー表示
@@ -230,22 +230,8 @@ class ModelLoad:
 
             # モデルサイズの計算と保存（ロード時に実行）
             if not hasattr(ModelLoad, "_MODEL_SIZES") or model_name not in ModelLoad._MODEL_SIZES:
-                # ONNXモデルのサイズ推定（ファイルサイズベース）
                 model_size = ModelLoad._calculate_onnx_size(model_path)
-
-                # クラス変数にキャッシュ
-                if not hasattr(ModelLoad, "_MODEL_SIZES"):
-                    ModelLoad._MODEL_SIZES = {}
-                ModelLoad._MODEL_SIZES[model_name] = model_size
-
-                # TOMLファイルにも保存
-                utils.save_model_size(model_name, model_size)
-
-                # GBに変換して表示
-                model_size_gb = model_size / 1024
-                ModelLoad.logger.info(
-                    f"モデル '{model_name}' の推定サイズを計算しました: {model_size_gb:.3f}GB"
-                )
+                ModelLoad._calculate_and_save_model_size(model_name, model_size)
 
             return components
 
