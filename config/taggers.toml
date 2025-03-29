@@ -42,13 +42,11 @@ estimated_size_gb = 0.552
 [wd-swinv2-tagger-v3]
 model_path = "SmilingWolf/wd-swinv2-tagger-v3"
 class = "WDTagger"
-device = "cpu"
 estimated_size_gb = 0.653
 
 [wd-vit-large-tagger-v3]
 model_path = "SmilingWolf/wd-vit-large-tagger-v3"
 class = "WDTagger"
-device = "cpu"
 estimated_size_gb = 1.761
 
 [wd-eva02-large-tagger-v3]
@@ -97,6 +95,11 @@ model_path = "Salesforce/blip2-flan-t5-xl-coco"
 class = "BLIP2Tagger"
 device = "cpu"
 estimated_size_gb = 17.627
+
+# [blip2-flan-t5-xxl] #スペック不足メモリに展開できない
+# model_path = "Salesforce/blip2-flan-t5-xxl"
+# class = "BLIP2Tagger"
+# device = "cpu"
 
 [GITLargeCaptioning]
 model_path = "microsoft/git-large-coco"
