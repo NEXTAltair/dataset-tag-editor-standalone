@@ -188,3 +188,33 @@ def load_model_config() -> dict[str, dict[str, Any]]:
     if not isinstance(config_data, dict):
         raise TypeError("構成データは辞書である必要があります")
     return dict(config_data)
+
+
+def save_model_size(model_name: str, size_mb: float) -> None:
+    """モデルのサイズ推定値をtaggers.tomlに保存する (GB単位)"""
+    try:
+        # MBからGBに変換
+        size_gb = size_mb / 1024
+
+        # 既存のTOMLファイルを読み込む
+        if CONFIG_TOML.exists():
+            config_data = toml.load(CONFIG_TOML)
+        else:
+            logger.error(f"設定ファイル {CONFIG_TOML} が見つかりません")
+            return
+
+        # モデル設定が存在するか確認
+        if model_name not in config_data:
+            logger.warning(f"モデル '{model_name}' の設定が見つかりません")
+            return
+
+        # サイズ情報を追加/更新 (GB単位)
+        config_data[model_name]["estimated_size_gb"] = round(size_gb, 3)  # 小数点3桁まで丸める
+
+        # 変更をファイルに書き込む
+        with open(CONFIG_TOML, "w") as f:
+            toml.dump(config_data, f)
+
+        logger.debug(f"モデル '{model_name}' の推定サイズ ({size_gb:.3f}GB) を保存しました")
+    except Exception as e:
+        logger.error(f"モデルサイズの保存に失敗しました: {e}")

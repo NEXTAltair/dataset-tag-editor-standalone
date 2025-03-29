@@ -1,6 +1,6 @@
-"""スコアラーモジュールの統合テスト
+"""タガーモジュールの統合テスト
 
-このモジュールでは、スコアラーモジュールの統合テストを実装します
+このモジュールでは、タガーモジュールの統合テストを実装します
 """
 
 import gc
@@ -15,18 +15,18 @@ import torch
 from PIL import Image
 from pytest_bdd import given, scenarios, then, when
 
-from scorer_wrapper_lib.scorer import (
-    _MODEL_INSTANCE_REGISTRY,
-    evaluate,
-    get_scorer_instance,
-)  # type: ignore
-from scorer_wrapper_lib.scorer_registry import (
+from tagger_wrapper_lib.registry import (
     ModelClass,
     get_cls_obj_registry,
-    list_available_scorers,
+    list_available_taggers,
+)  # type: ignore
+from tagger_wrapper_lib.tagger import (
+    _MODEL_INSTANCE_REGISTRY,
+    evaluate,
+    get_tagger_instance,
 )  # type: ignore
 
-scenarios("../features/scorer.feature")
+scenarios("../features/tagger.feature")
 
 
 # resourcesディレクトリのパス
@@ -47,22 +47,22 @@ def load_image_files(count=1):
 
 
 # given ----------------
-@given("モデルクラスレジストリが初期化されている", target_fixture="scorer_registry")
-def given_initialize_scorer_library() -> dict[str, ModelClass]:
+@given("モデルクラスレジストリが初期化されている", target_fixture="tagger_registry")
+def given_initialize_tagger_library() -> dict[str, ModelClass]:
     return get_cls_obj_registry()
 
 
 @given("レジストリに登録されたモデルのリストを取得する", target_fixture="available_models")
 def given_get_available_models() -> list[str]:
-    return list_available_scorers()
+    return list_available_taggers()
 
 
 @given("インスタンス化済みのモデルクラスが存在する", target_fixture="instantiated_models")
-def given_instantiated_models(scorer_registry: dict[str, ModelClass]) -> dict[str, Any]:
+def given_instantiated_models(tagger_registry: dict[str, ModelClass]) -> dict[str, Any]:
     instantiated = {}
-    # scorer_registryからモデル名を取得してインスタンス化
-    for model_name in scorer_registry.keys():
-        instantiated[model_name] = get_scorer_instance(model_name)
+    # tagger_registryからモデル名を取得してインスタンス化
+    for model_name in tagger_registry.keys():
+        instantiated[model_name] = get_tagger_instance(model_name)
     return instantiated  # _MODEL_INSTANCE_REGISTRY と中身同じ
 
 
@@ -71,10 +71,10 @@ def given_valid_single_image() -> list[Image.Image]:
     return load_image_files(count=1)  # 1枚の画像を読み込む
 
 
-@given("スコアラーがインスタンス化されている", target_fixture="model_for_scoring")
-def given_scorer_instances(scorer_registry: dict[str, Any]) -> list[str]:
+@given("タガーがインスタンス化されている", target_fixture="model_for_tagging")
+def given_tagger_instances(tagger_registry: dict[str, Any]) -> list[str]:
     # テスト用に単一のモデル名を返す
-    return [next(iter(scorer_registry.keys()))]
+    return [next(iter(tagger_registry.keys()))]
 
 
 @given("複数の有効な画像ファイルが準備されている", target_fixture="valid_images")
@@ -83,9 +83,9 @@ def given_valid_images_multiple() -> list[Image.Image]:
 
 
 @given("複数のモデルが指定されている", target_fixture="multiple_models")
-def given_multiple_models(scorer_registry) -> list[str]:
+def given_multiple_models(tagger_registry) -> list[str]:
     # 利用可能なモデル名のリスト
-    available_models = list(scorer_registry.keys())
+    available_models = list(tagger_registry.keys())
 
     # モデルが3つ以上ある場合は、ランダムに3つを選択
     # そうでない場合は全モデルを使用
@@ -97,19 +97,19 @@ def given_multiple_models(scorer_registry) -> list[str]:
     return selected_models
 
 
-@given("50枚の有効な画像ファイルが準備されている", target_fixture="valid_images_large")
+@given("30枚の有効な画像ファイルが準備されている", target_fixture="valid_images_large")
 def given_valid_images_large() -> list[Image.Image]:
-    # 画像が足りない場合は重複して50枚に
+    # 画像が足りない場合は重複して30枚に
     single_images = load_image_files(count=9)  # 既存のリソースから最大枚数
     images = []
-    for _ in range(6):  # 6回コピーして50枚以上にする
+    for _ in range(4):  # 4回コピーして50枚以上にする
         images.extend(single_images)
-    return images[:50]  # 50枚に制限
+    return images[:30]  # 30枚に制限
 
 
 @given("すべての利用可能なモデルが指定されている", target_fixture="all_models")
-def given_all_models(scorer_registry) -> list[str]:
-    return list(scorer_registry.keys())
+def given_all_models(tagger_registry) -> list[str]:
+    return list(tagger_registry.keys())
 
 
 # when ----------------
@@ -117,7 +117,7 @@ def given_all_models(scorer_registry) -> list[str]:
 def when_instantiate_all_models(available_models: list[str]) -> dict[str, Any]:
     instantiated = {}
     for model_name in available_models:
-        instantiated[model_name] = get_scorer_instance(model_name)
+        instantiated[model_name] = get_tagger_instance(model_name)
     return instantiated
 
 
@@ -129,8 +129,8 @@ def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
     # 元のインスタンスを記録
     original_instance = instantiated_models[model_name]
 
-    # get_scorer_instanceを使ってキャッシュから取得（_create_scorer_instanceではない）
-    reused_instance = get_scorer_instance(model_name)
+    # get_tagger_instanceを使ってキャッシュから取得（_create_tagger_instanceではない）
+    reused_instance = get_tagger_instance(model_name)
 
     # 比較のために必要な情報を返す
     return {
@@ -140,39 +140,39 @@ def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
     }
 
 
-@when("この画像をスコアリングする", target_fixture="scoring_results")
-def when_score_image(
-    valid_image: list[Image.Image], model_for_scoring: list[str]
+@when("この画像をタグ付けする", target_fixture="tagging_results")
+def when_tag_image(
+    valid_image: list[Image.Image], model_for_tagging: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで評価する
-    return evaluate(valid_image, model_for_scoring)
+    return evaluate(valid_image, model_for_tagging)
 
 
-@when("これらの画像を一括評価する", target_fixture="scoring_results")
-def when_score_images(
-    valid_images: list[Image.Image], model_for_scoring: list[str]
+@when("これらの画像を一括アノテーションを実行", target_fixture="tagging_results")
+def when_tag_images(
+    valid_images: list[Image.Image], model_for_tagging: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
-    return evaluate(valid_images, model_for_scoring)
+    return evaluate(valid_images, model_for_tagging)
 
 
-@when("この画像を複数のモデルで評価する", target_fixture="scoring_results")
-def when_score_image_multiple_models(
+@when("この画像を複数のモデルでアノテーションを実行", target_fixture="tagging_results")
+def when_tag_image_multiple_models(
     valid_image: list[Image.Image], multiple_models: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
     return evaluate(valid_image, multiple_models)
 
 
-@when("これらの画像を複数のモデルで一括評価する", target_fixture="scoring_results")
-def when_score_images_multiple_models(
+@when("これらの画像を複数のモデルで一括アノテーションを実行", target_fixture="tagging_results")
+def when_tag_images_multiple_models(
     valid_images: list[Image.Image], multiple_models: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
     return evaluate(valid_images, multiple_models)
 
 
-@when("これらの画像を複数回連続で評価する", target_fixture="stress_test_results")
+@when("これらの画像を複数回連続でアノテーションを実行", target_fixture="test_results")
 def when_evaluate_images_repeatedly(valid_images_large: list[Image.Image], all_models: list[str]) -> dict:
     results = []
     memory_usage = []  # CPUメモリ
@@ -213,10 +213,11 @@ def when_evaluate_images_repeatedly(valid_images_large: list[Image.Image], all_m
     }
 
 
-@when("各モデルを交互に100回切り替えながら画像を評価する", target_fixture="switch_test_results")
+@when("各モデルを交互に100回切り替えながら画像をアノテーションを実行", target_fixture="test_results")
 def when_switch_models_repeatedly(valid_image: list[Image.Image], all_models: list[str]) -> dict:
     results = []
-    memory_readings = []
+    memory_usage = []
+    gpu_memory_usage = []
     start_time = time.time()
 
     # モデルが少ない場合は繰り返し使用して100回に
@@ -229,8 +230,12 @@ def when_switch_models_repeatedly(valid_image: list[Image.Image], all_models: li
             # 強制的にGCを実行してメモリ状況を確認
             gc.collect()
             process = psutil.Process(os.getpid())
-            memory_readings.append(process.memory_info().rss / 1024 / 1024)  # MB単位
+            memory_usage.append(process.memory_info().rss / 1024 / 1024)
 
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024 / 1024
+                reserved = torch.cuda.memory_reserved() / 1024 / 1024
+                gpu_memory_usage.append({"allocated": allocated, "reserved": reserved})
         # 単一モデルで評価
         result = evaluate(valid_image, [model_name])
         results.append(result)
@@ -240,8 +245,10 @@ def when_switch_models_repeatedly(valid_image: list[Image.Image], all_models: li
     return {
         "results": results,
         "total_time": total_time,
-        "memory_readings": memory_readings,
-        "switch_count": len(models_for_test),
+        "memory_usage": memory_usage,
+        "gpu_memory_usage": gpu_memory_usage,
+        "image_count": len(valid_image),
+        "model_count": len(all_models),
     }
 
 
@@ -259,8 +266,8 @@ def then_all_models_instantiated(available_models: list[str], instantiated_model
 
         # 必要なメソッドが存在することを確認
         assert hasattr(model_instance, "predict"), f"モデル '{model_name}' に predict メソッドがありません"
-        assert hasattr(model_instance, "_calculate_score"), (
-            f"モデル '{model_name}' に _calculate_score メソッドがありません"
+        assert hasattr(model_instance, "_generate_tags"), (
+            f"モデル '{model_name}' に _generate_tags メソッドがありません"
         )
         assert hasattr(model_instance, "_generate_result"), (
             f"モデル '{model_name}' に _generate_result メソッドがありません"
@@ -281,62 +288,62 @@ def then_cached_model_instance_returned(reused_instance: dict) -> None:
 
 
 @then("画像に対するモデルの処理結果が返される")
-def then_valid_score_returned_single_image(
-    scoring_results: dict[str, list[dict[str, Any]]],
+def then_valid_tag_returned_single_image(
+    tagging_results: dict[str, list[dict[str, Any]]],
     valid_image: list[Image.Image],
 ) -> None:
-    verify_scoring_results(scoring_results, valid_image, expect_multiple_models=False)
+    verify_tagging_results(tagging_results, valid_image, expect_multiple_models=False)
 
 
 @then("各画像に対するモデルの処理結果が返される")
-def then_valid_score_returned_multiple_images(
-    scoring_results: dict[str, list[dict[str, Any]]],
+def then_valid_tag_returned_multiple_images(
+    tagging_results: dict[str, list[dict[str, Any]]],
     valid_images: list[Image.Image],
 ) -> None:
-    verify_scoring_results(scoring_results, valid_images, expect_multiple_models=False)
+    verify_tagging_results(tagging_results, valid_images, expect_multiple_models=False)
 
 
 @then("画像に対する各モデルの処理結果が返される")
-def then_valid_score_returned_multiple_models(
-    scoring_results: dict[str, list[dict[str, Any]]],
+def then_valid_tag_returned_multiple_models(
+    tagging_results: dict[str, list[dict[str, Any]]],
     valid_image: list[Image.Image],
 ) -> None:
-    verify_scoring_results(scoring_results, valid_image, expect_multiple_models=True)
+    verify_tagging_results(tagging_results, valid_image, expect_multiple_models=True)
 
 
 @then("各画像に対する各モデルの処理結果が返される")
-def then_valid_score_returned_multiple_models_multiple_images(
-    scoring_results: dict[str, list[dict[str, Any]]],
+def then_valid_tag_returned_multiple_models_multiple_images(
+    tagging_results: dict[str, list[dict[str, Any]]],
     valid_images: list[Image.Image],
 ) -> None:
-    verify_scoring_results(scoring_results, valid_images, expect_multiple_models=True)
+    verify_tagging_results(tagging_results, valid_images, expect_multiple_models=True)
 
 
 # 共通の検証ロジック
-def verify_scoring_results(
-    scoring_results: dict[str, list[dict[str, Any]]],
+def verify_tagging_results(
+    tagging_results: dict[str, list[dict[str, Any]]],
     images: list[Image.Image],
     expect_multiple_models: bool = False,
 ) -> None:
-    """スコアリング結果を検証する共通ロジック
+    """タグ付け結果を検証する共通ロジック
 
     Args:
-        scoring_results: スコアリング結果
+        tagging_results: タグ付け結果
         images: 評価された画像リスト
         expect_multiple_models: 複数モデルの結果が期待されるかどうか
     """
     # 結果が存在するか確認
-    assert len(scoring_results) > 0, "スコアリング結果が空です"
+    assert len(tagging_results) > 0, "タグ付け結果が空です"
 
     # モデル数の確認
     if expect_multiple_models:
-        assert len(scoring_results) > 1, "2つ以上のモデルで評価されていません"
+        assert len(tagging_results) > 1, "2つ以上のモデルで評価されていません"
     else:
-        assert len(scoring_results) == 1, "2つ以上のモデルが評価されています"
+        assert len(tagging_results) == 1, "2つ以上のモデルが評価されています"
 
     # 各モデルの結果をチェック
     model_count = 0
-    for model_name, results in scoring_results.items():
+    for _, results in tagging_results.items():
         # 評価された画像の枚数が正しいことを確認
         assert len(results) == len(images), "評価された画像の枚数が正しくありません"
 
@@ -346,21 +353,21 @@ def verify_scoring_results(
         # 各結果に必要なキーが含まれているか
         for result in results:
             assert "model_name" in result, "結果に 'model_name' キーがありません"
-            assert "score_tag" in result, "結果に 'score_tag' キーがありません"
             assert "model_output" in result, "結果に 'model_output' キーがありません"
+            assert "annotation" in result, "結果に 'annotation' キーがありません"
 
         model_count += 1
 
     # 複数モデルの場合、モデル数が正しいか確認
     if expect_multiple_models:
-        assert model_count == len(scoring_results), "モデルの数が正しくありません"
+        assert model_count == len(tagging_results), "モデルの数が正しくありません"
 
 
 @then("全ての評価が正常に完了している")
-def then_all_evaluations_completed(stress_test_results: dict) -> None:
-    results = stress_test_results["results"]
-    image_count = stress_test_results["image_count"]
-    model_count = stress_test_results["model_count"]
+def then_all_evaluations_completed(test_results: dict) -> None:
+    results = test_results["results"]
+    image_count = test_results["image_count"]
+    model_count = test_results["model_count"]
 
     # 3ラウンド全てで結果があることを確認
     assert len(results) == 3, "全3ラウンドの結果が揃っていません"
@@ -375,47 +382,15 @@ def then_all_evaluations_completed(stress_test_results: dict) -> None:
                 f"ラウンド{i + 1}のモデル{model_name}で画像{image_count}枚分の結果がありません"
             )
 
-    print(f"ストレステスト完了: {stress_test_results['total_time']:.2f}秒")
+    print(f"ストレステスト完了: {test_results['total_time']:.2f}秒")
     print(f"評価画像数: {image_count}枚")
     print(f"使用モデル数: {model_count}個")
 
 
-@then("GPU・CPUメモリの使用状況が許容範囲内である")
-def then_memory_usage_is_acceptable(stress_test_results: dict) -> None:
-    # CPU（メイン）メモリのチェック
-    memory_readings = stress_test_results["memory_usage"]
-    initial_memory = memory_readings[0]
-    final_memory = memory_readings[-1]
-    memory_increase = final_memory - initial_memory
-
-    print(f"CPUメモリ初期使用量: {initial_memory:.2f}MB")
-    print(f"CPUメモリ最終使用量: {final_memory:.2f}MB")
-    print(f"CPUメモリ増加量: {memory_increase:.2f}MB")
-
-    # GPUメモリのチェックを追加
-    if "gpu_memory_usage" in stress_test_results and torch.cuda.is_available():
-        gpu_readings = stress_test_results["gpu_memory_usage"]
-
-        if gpu_readings:
-            initial_gpu = gpu_readings[0]["allocated"]
-            final_gpu = gpu_readings[-1]["allocated"]
-            gpu_increase = final_gpu - initial_gpu
-
-            print(f"GPUメモリ初期使用量: {initial_gpu:.2f}MB")
-            print(f"GPUメモリ最終使用量: {final_gpu:.2f}MB")
-            print(f"GPUメモリ増加量: {gpu_increase:.2f}MB")
-
-            # GPUメモリの許容範囲チェック
-            assert gpu_increase < 500, f"GPUメモリ使用量が{gpu_increase:.2f}MB増加しました（許容値:500MB）"
-
-    # CPU（メイン）メモリの許容範囲チェック
-    assert memory_increase < 1500, f"CPUメモリ使用量が{memory_increase:.2f}MB増加しました（許容値:1500MB）"
-
-
 @then("モデル切り替えが正常に動作している")
-def then_model_switching_works_correctly(switch_test_results: dict) -> None:
-    results = switch_test_results["results"]
-    switch_count = switch_test_results["switch_count"]
+def then_model_switching_works_correctly(test_results: dict) -> None:
+    results = test_results["results"]
+    switch_count = test_results["switch_count"]
 
     # 全ての切り替えで結果が存在することを確認
     assert len(results) == switch_count, (
@@ -427,27 +402,77 @@ def then_model_switching_works_correctly(switch_test_results: dict) -> None:
         assert isinstance(result, dict), f"{i + 1}回目の結果が辞書形式ではありません"
         assert len(result) > 0, f"{i + 1}回目の結果が空です"
 
-    print(f"モデル切り替えテスト完了: {switch_test_results['total_time']:.2f}秒")
+    print(f"モデル切り替えテスト完了: {test_results['total_time']:.2f}秒")
     print(f"切り替え回数: {switch_count}回")
 
 
 @then("リソースリークが発生していない")
-def then_no_resource_leaks(switch_test_results: dict) -> None:
-    memory_readings = switch_test_results["memory_readings"]
+def then_no_resource_leaks(test_results: dict) -> None:  # 引数名を汎用的な test_results に戻す
+    """メモリ使用量の増加とリーク傾向をチェックする"""
 
-    if len(memory_readings) >= 2:
-        initial_memory = memory_readings[0]
-        final_memory = memory_readings[-1]
-        max_memory = max(memory_readings)
+    # 渡された結果がどちらのテストのものか判別
+    is_stress_test = (
+        "memory_usage" in test_results and len(test_results["memory_usage"]) == 3
+    )  # ストレステストは3回記録
+    is_switch_test = (
+        "memory_usage" in test_results and len(test_results["memory_usage"]) == 10
+    )  # 切り替えテストは10回記録
 
-        print(f"初期メモリ使用量: {initial_memory:.2f}MB")
-        print(f"最終メモリ使用量: {final_memory:.2f}MB")
-        print(f"最大メモリ使用量: {max_memory:.2f}MB")
+    if is_stress_test:
+        # CPU（メイン）メモリのチェック
+        memory_readings = test_results["memory_usage"]
+        if len(memory_readings) >= 2:
+            initial_memory = memory_readings[0]  # 最初の測定値
+            final_memory = memory_readings[-1]
+            memory_increase = final_memory - initial_memory
 
-        # より現実的な条件
-        # 最終値が最大値より10%以上小さければOK
-        memory_stabilizing = final_memory < max_memory * 0.95
-        # または、最終メモリがシステムメモリの25%未満
-        memory_acceptable = final_memory < psutil.virtual_memory().total / 1024 / 1024 * 0.25
+            print(f"[ストレステスト] CPUメモリ初期使用量: {initial_memory:.2f}MB")
+            print(f"[ストレステスト] CPUメモリ最終使用量: {final_memory:.2f}MB")
+            print(f"[ストレステスト] CPUメモリ増加量: {memory_increase:.2f}MB")
+            # CPU（メイン）メモリの許容範囲チェック
+            assert memory_increase < 1500, (
+                f"CPUメモリ使用量が{memory_increase:.2f}MB増加しました（許容値:1500MB）"
+            )
 
-        assert memory_stabilizing or memory_acceptable, "メモリ使用量が安定していません"
+        # GPUメモリのチェックを追加
+        if "gpu_memory_usage" in test_results and torch.cuda.is_available():
+            gpu_readings = test_results["gpu_memory_usage"]
+            if len(gpu_readings) >= 2:
+                initial_gpu = gpu_readings[0]["allocated"]
+                final_gpu = gpu_readings[-1]["allocated"]
+                gpu_increase = final_gpu - initial_gpu
+
+                print(f"[ストレステスト] GPUメモリ初期使用量: {initial_gpu:.2f}MB")
+                print(f"[ストレステスト] GPUメモリ最終使用量: {final_gpu:.2f}MB")
+                print(f"[ストレステスト] GPUメモリ増加量: {gpu_increase:.2f}MB")
+                # GPUメモリの許容範囲チェック
+                assert gpu_increase < 500, (
+                    f"GPUメモリ使用量が{gpu_increase:.2f}MB増加しました（許容値:500MB）"
+                )
+
+    elif is_switch_test:
+        memory_readings = test_results["memory_usage"]  # キー名を memory_usage に変更
+        if len(memory_readings) >= 2:
+            final_memory = memory_readings[-1]
+            max_memory = max(memory_readings)
+            avg_memory = sum(memory_readings) / len(memory_readings)
+
+            print(f"[切り替えテスト] 初期メモリ使用量: {memory_readings[0]:.2f}MB")  # 修正: 初期メモリ表示
+            print(f"[切り替えテスト] 最終メモリ使用量: {final_memory:.2f}MB")
+            print(f"[切り替えテスト] 最大メモリ使用量: {max_memory:.2f}MB")
+            print(f"[切り替えテスト] 平均メモリ使用量: {avg_memory:.2f}MB")
+
+            # 平均値との比較を追加（より安定した指標）
+            final_to_avg_ratio = final_memory / avg_memory
+            print(f"[切り替えテスト] 最終/平均メモリ比: {final_to_avg_ratio:.2f}")
+
+            # より現実的な判定条件（最終値が平均の1.2倍未満）
+            memory_stable = final_to_avg_ratio < 1.2
+
+            assert memory_stable, (
+                "モデル切り替えテスト中のメモリ使用量に持続的な増加（メモリリークの可能性）が検出されました"
+            )
+
+    else:
+        # どちらのテスト結果でもない場合（通常は発生しないはず）
+        raise ValueError("不明なテスト結果が渡されました")

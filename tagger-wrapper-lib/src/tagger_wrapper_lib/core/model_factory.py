@@ -1,13 +1,18 @@
+import gc  # release_onnx_components で使うので import をファイルの先頭に移動
 import logging
+import time
+from pathlib import Path
 from typing import Any, Optional
 
 import onnxruntime as ort
+import psutil
 import torch
 from transformers import (
     AutoModelForVision2Seq,
     AutoProcessor,
 )
 
+from ..exceptions.model_errors import OutOfMemoryError  # インポート
 from . import utils
 
 logger = logging.getLogger(__name__)
@@ -15,96 +20,293 @@ logger = logging.getLogger(__name__)
 
 class ModelLoad:
     _MODEL_STATES: dict[str, str] = {}
+    _MEMORY_USAGE: dict[str, float] = {}
+    _MODEL_LAST_USED: dict[str, float] = {}  # タイムスタンプを記録
+    _CACHE_RATIO = 0.3  # システム全体のメモリの何割までキャッシュに使用するか
+    _MODEL_SIZES: dict[str, float] = {}  # モデルサイズをキャッシュするためのクラス変数
     logger = logging.getLogger(__name__)
+
+    @staticmethod
+    def get_model_size(model_name: str, model: Optional[dict[str, Any]] = None) -> float:
+        """モデルの推定メモリ使用量を取得（MB単位）"""
+        # クラス変数にキャッシュがあるか確認
+        if hasattr(ModelLoad, "_MODEL_SIZES") and model_name in ModelLoad._MODEL_SIZES:
+            return ModelLoad._MODEL_SIZES[model_name]
+
+        # 設定ファイルから読み込む
+        model_configs = utils.load_model_config()
+        if model_name in model_configs and "estimated_size_gb" in model_configs[model_name]:
+            # GBからMBに変換して内部で扱う
+            size_mb = float(model_configs[model_name]["estimated_size_gb"]) * 1024
+
+            # クラス変数にもキャッシュ
+            if not hasattr(ModelLoad, "_MODEL_SIZES"):
+                ModelLoad._MODEL_SIZES = {}
+            ModelLoad._MODEL_SIZES[model_name] = size_mb
+
+            logger.debug(
+                f"モデル '{model_name}' のサイズをキャッシュから読み込みました: {size_mb / 1024:.3f}GB"
+            )
+            return size_mb
+
+        # サイズ情報がない場合
+        logger.warning(f"モデル '{model_name}' のサイズ情報が見つかりません。デフォルト値を使用します。")
+        return 1000.0  # デフォルト値: 1GB (MB単位)
+
+    @staticmethod
+    def get_max_cache_size() -> float:
+        """システムの最大メモリに基づいてキャッシュサイズを計算"""
+        total_memory = psutil.virtual_memory().total / (1024 * 1024)  # MB単位
+        cache_size = total_memory * ModelLoad._CACHE_RATIO
+
+        # 現在のメモリ使用状況もログ出力
+        available_memory = psutil.virtual_memory().available / (1024 * 1024)
+        ModelLoad.logger.info(
+            f"システム全体のメモリ: {total_memory:.1f}MB, "
+            f"現在の空きメモリ: {available_memory:.1f}MB, "
+            f"設定キャッシュ容量: {cache_size:.1f}MB"
+        )
+
+        return float(cache_size)
+
+    @staticmethod
+    def _clear_cache_if_needed(model_name: str, model_size: float) -> None:
+        """必要に応じて古いモデルをキャッシュから削除します"""
+        max_cache = ModelLoad.get_max_cache_size()
+        current_cache_size = sum(ModelLoad._MEMORY_USAGE.values())
+
+        if current_cache_size + model_size <= max_cache:
+            return
+
+        # GBに変換して表示
+        max_cache_gb = max_cache / 1024
+        current_cache_gb = current_cache_size / 1024
+        model_size_gb = model_size / 1024
+
+        ModelLoad.logger.warning(
+            f"キャッシュ容量（{max_cache_gb:.3f}GB）を超過します。"
+            f"現在の使用量: {current_cache_gb:.3f}GB + 新規: {model_size_gb:.3f}GB"
+        )
+
+        # 使用時刻でソートし、古いものから解放
+        models_by_age = sorted(ModelLoad._MODEL_LAST_USED.items(), key=lambda x: x[1])
+
+        for old_model_name, last_used in models_by_age:
+            if current_cache_size + model_size <= max_cache:
+                break
+
+            if old_model_name == model_name:
+                continue  # 現在キャッシュしようとしているモデルはスキップ
+
+            freed_memory = ModelLoad._MEMORY_USAGE.get(old_model_name, 0)
+            ModelLoad.logger.info(
+                f"モデル '{old_model_name}' を解放します"
+                f"（最終使用: {time.strftime('%H:%M:%S', time.localtime(last_used))}, "
+                f"解放メモリ: {freed_memory:.1f}MB）"
+            )
+
+            ModelLoad.release_model(old_model_name)
+            current_cache_size = sum(ModelLoad._MEMORY_USAGE.values())
+
+    @staticmethod
+    def cache_to_main_memory(model_name: str, model: dict[str, Any]) -> dict[str, Any]:
+        """メモリ管理を行いながらモデルをキャッシュ"""
+        if model_name in ModelLoad._MODEL_STATES and ModelLoad._MODEL_STATES[model_name] == "on_cpu":
+            ModelLoad.logger.debug(f"モデル '{model_name}' は既にCPUにあります。")
+            ModelLoad._MODEL_LAST_USED[model_name] = time.time()
+            return model
+
+        # モデルサイズを取得（すでに計算済みの想定）
+        model_size = ModelLoad.get_model_size(model_name, model)
+        # GBに変換して表示
+        model_size_gb = model_size / 1024
+        ModelLoad.logger.info(f"モデル '{model_name}' の推定サイズ: {model_size_gb:.3f}GB")
+
+        # キャッシュ容量を確認し必要なら古いモデルを解放
+        ModelLoad._clear_cache_if_needed(model_name, model_size)
+
+        # モデルをCPUに移動
+        try:
+            for component_name, component in model.items():
+                if component_name == "pipeline":
+                    if hasattr(component, "model"):
+                        component.model.to("cpu")
+                elif hasattr(component, "to"):
+                    component.to("cpu")
+
+            ModelLoad._MODEL_STATES[model_name] = "on_cpu"
+            ModelLoad._MEMORY_USAGE[model_name] = model_size
+            ModelLoad._MODEL_LAST_USED[model_name] = time.time()
+
+            max_cache = ModelLoad.get_max_cache_size()
+            ModelLoad.logger.info(
+                f"モデル '{model_name}' をキャッシュしました "
+                f"（サイズ: {model_size_gb:.3f}GB, "
+                f"現在のキャッシュ使用量: {sum(ModelLoad._MEMORY_USAGE.values()):.1f}MB/{max_cache:.1f}MB）"
+            )
+
+            return model
+
+        except Exception as e:
+            ModelLoad.logger.error(f"モデルのキャッシュに失敗しました: {str(e)}")
+            return model
 
     @staticmethod
     def load_transformer_components(
         model_name: str, model_path: str, device: str
     ) -> Optional[dict[str, Any]]:
+        """Transformerモデルのコンポーネントをロードし、メモリ不足をハンドリングします。"""
         if model_name in ModelLoad._MODEL_STATES:
             ModelLoad.logger.debug(f"モデル '{model_name}' は既に読み込まれています。")
             return None
 
-        # 適切なプロセッサとモデルを自動的に選択
-        processor = AutoProcessor.from_pretrained(model_path)
-        model = AutoModelForVision2Seq.from_pretrained(model_path).to(device)
+        try:
+            # 適切なプロセッサとモデルを自動的に選択
+            processor = AutoProcessor.from_pretrained(model_path)
+            model = AutoModelForVision2Seq.from_pretrained(model_path).to(device)
 
-        ModelLoad._MODEL_STATES[model_name] = f"on_{device}"
-        return {"model": model, "processor": processor}
+            components = {"model": model, "processor": processor}
+
+            # モデルサイズの計算と保存（ロード時に実行）
+            if not hasattr(ModelLoad, "_MODEL_SIZES") or model_name not in ModelLoad._MODEL_SIZES:
+                model_size = ModelLoad._calculate_transformer_size(model)
+
+                # クラス変数にキャッシュ
+                if not hasattr(ModelLoad, "_MODEL_SIZES"):
+                    ModelLoad._MODEL_SIZES = {}
+                ModelLoad._MODEL_SIZES[model_name] = model_size
+
+                # TOMLファイルにも保存
+                utils.save_model_size(model_name, model_size)
+
+                # GBに変換して表示
+                model_size_gb = model_size / 1024
+                ModelLoad.logger.info(
+                    f"モデル '{model_name}' の推定サイズを計算しました: {model_size_gb:.3f}GB"
+                )
+
+            ModelLoad._MODEL_STATES[model_name] = f"on_{device}"
+            return components
+
+        except torch.OutOfMemoryError as e:
+            # メモリ不足エラーハンドリングを base.py から移動
+            error_message = f"CUDAメモリ不足: モデル '{model_name}' のロード中 (デバイス: {device})"
+            ModelLoad.logger.error(error_message)
+            ModelLoad.logger.error(f"元のPyTorchエラー: {e}")  # 元のエラー表示
+            try:
+                if device.startswith("cuda") and torch.cuda.is_available():
+                    ModelLoad.logger.error(torch.cuda.memory_summary(device=device))  # メモリサマリー表示
+            except Exception as mem_e:
+                ModelLoad.logger.error(f"CUDAメモリサマリーの取得に失敗: {mem_e}")
+            if model_name in ModelLoad._MODEL_STATES:
+                del ModelLoad._MODEL_STATES[model_name]
+            raise OutOfMemoryError(error_message) from e
+        # その他のエラーはそのまま送出
 
     @staticmethod
-    def load_onnx_components(model_name: str, model_repo: str, device: str) -> Optional[dict[str, Any]]:
-        if model_name in ModelLoad._MODEL_STATES:
-            ModelLoad.logger.debug(f"モデル '{model_name}' は既に読み込まれています。")
-            return None
-        # ONNXランタイムセッションの作成
-        csv_path, model_path = utils.download_wd_tagger_model(model_repo)
+    def load_onnx_components(model_name: str, model_repo: str, device: str) -> dict[str, Any]:
+        """ONNXモデルのコンポーネントをロードし、メモリ不足をハンドリング。"""
+        # NOTE: _MODEL_STATES でモデルの状態を管理しない｡ メインメモリーに移動はONNXの仕様上不可能
 
-        # 利用可能なプロバイダーを取得
-        available_providers = ort.get_available_providers()
-        ModelLoad.logger.debug(f"利用可能なプロバイダー: {available_providers}")
+        session = None
+        try:
+            # ONNXランタイムセッションの作成
+            csv_path, model_path = utils.download_wd_tagger_model(model_repo)
 
-        # デバイスに基づいてプロバイダーを選択
-        if device == "cuda" and "CUDAExecutionProvider" in available_providers:
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        else:
-            providers = ["CPUExecutionProvider"]
+            # 利用可能なプロバイダーを取得
+            available_providers = ort.get_available_providers()
+            ModelLoad.logger.debug(f"利用可能なプロバイダー: {available_providers}")
 
-        ModelLoad.logger.info(f"ONNXモデル '{model_path}' をロードしています...")
-        session = ort.InferenceSession(model_path, providers=providers)
+            # デバイスに基づいてプロバイダーを選択
+            if device == "cuda" and "CUDAExecutionProvider" in available_providers:
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                providers = ["CPUExecutionProvider"]
 
-        ModelLoad._MODEL_STATES[model_name] = f"on_{device}"
-        return {"model": session, "csv_path": csv_path}
+            ModelLoad.logger.debug(f"ONNXモデル '{model_path}' をロードしています...")
+            session = ort.InferenceSession(model_path, providers=providers)
 
-    @staticmethod
-    def cache_to_main_memory(model_name: str, model: dict[str, Any]) -> dict[str, Any]:
-        """モデルを CPU メモリにキャッシュします。
+            components = {"session": session, "csv_path": csv_path}
 
-        モデルのすべてのコンポーネントを GPU から CPU メモリに移動します。
-        これにより、GPU 上のメモリは解放されますが、モデル自体は保持されるため、
-        後で `restore_model_to_cuda` を呼び出して再利用できます。
+            # モデルサイズの計算と保存（ロード時に実行）
+            if not hasattr(ModelLoad, "_MODEL_SIZES") or model_name not in ModelLoad._MODEL_SIZES:
+                # ONNXモデルのサイズ推定（ファイルサイズベース）
+                model_size = ModelLoad._calculate_onnx_size(model_path)
 
-        主な用途:
-        - モデル自体は保持したまま GPU リソースを解放したい場合
+                # クラス変数にキャッシュ
+                if not hasattr(ModelLoad, "_MODEL_SIZES"):
+                    ModelLoad._MODEL_SIZES = {}
+                ModelLoad._MODEL_SIZES[model_name] = model_size
 
-        Note:
-            このメソッドはモデルを破棄しません。モデルを完全に解放するには
-            `release_model` を使用してください。
-        """
-        if ModelLoad._MODEL_STATES[model_name] == "on_cpu":
-            ModelLoad.logger.debug(f"モデル '{model_name}' は既に CPU にあります。")
-            return model
+                # TOMLファイルにも保存
+                utils.save_model_size(model_name, model_size)
 
-        for component_name, component in model.items():
-            if component_name == "pipeline":
-                # パイプラインの場合は内部モデルを移動
-                if hasattr(component, "model"):
-                    component.model.to("cpu")
-                ModelLoad.logger.debug(f"パイプライン '{component_name}' を CPU に移動しました")
-            elif hasattr(component, "to"):  # to メソッドを持つ場合のみ CPU に移動
-                component.to("cpu")
-                ModelLoad.logger.debug(f"コンポーネント '{component_name}' を CPU に移動しました")
+                # GBに変換して表示
+                model_size_gb = model_size / 1024
+                ModelLoad.logger.info(
+                    f"モデル '{model_name}' の推定サイズを計算しました: {model_size_gb:.3f}GB"
+                )
 
-        ModelLoad._MODEL_STATES[model_name] = "on_cpu"
-        return model
+            return components
+
+        except ort.capi.onnxruntime_pybind11_state.RuntimeException as e:
+            # 以下は既存のエラーハンドリングコード
+            if "Failed to allocate memory" in str(e) or "CUDA error" in str(e):
+                error_message = f"ONNX Runtime メモリ/CUDAエラー: モデル '{model_name}' のロード中"
+                ModelLoad.logger.error(error_message)
+                ModelLoad.logger.error(f"元のONNX Runtimeエラー: {e}")
+                raise OutOfMemoryError(error_message) from e
+            else:
+                # その他のRuntimeErrorはそのまま送出
+                raise
+        except Exception as e:
+            ModelLoad.logger.exception(f"ONNXモデル '{model_name}' のロード中に予期せぬエラーが発生: {e}")
+            if model_name in ModelLoad._MODEL_STATES:
+                del ModelLoad._MODEL_STATES[model_name]
+            raise
 
     @staticmethod
     def restore_model_to_cuda(model_name: str, device: str, model: dict[str, Any]) -> dict[str, Any]:
-        """モデルを指定 CUDA に復元します。"""
-        if ModelLoad._MODEL_STATES[model_name] == "on_cpu" and "cuda" in device:
-            for component_name, component in model.items():
-                if component_name == "pipeline":
-                    if hasattr(component, "model"):
-                        component.model.to("cuda")
+        """モデルを指定 CUDA に復元し、メモリ不足をハンドリングします。"""
+        current_state = ModelLoad._MODEL_STATES.get(model_name)
+        target_state = f"on_{device}"
 
-                elif hasattr(component, "to"):
-                    component.to("cuda")
-
-                ModelLoad._MODEL_STATES[model_name] = "on_cuda"
-                ModelLoad.logger.info(f"モデル '{model_name}' をメインメモリから復元しました。")
+        if current_state == target_state:
+            ModelLoad.logger.debug(f"モデル '{model_name}' は既に {device} にあります。")
             return model
 
-        return model
+        if current_state == "on_cpu" and "cuda" in device:
+            try:
+                for _, component in model.items():
+                    if hasattr(component, "to") and callable(component.to):
+                        component.to(device)
+
+                ModelLoad._MODEL_STATES[model_name] = target_state
+                ModelLoad.logger.debug(
+                    f"モデル '{model_name}' をメインメモリから {device} へ復元しました。"
+                )
+                return model
+            except torch.OutOfMemoryError as e:
+                error_message = f"CUDAメモリ不足: モデル '{model_name}' の {device} への復元中"
+                ModelLoad.logger.error(error_message)
+                ModelLoad.logger.error(f"元のPyTorchエラー: {e}")  # 元のエラー表示
+                try:
+                    if device.startswith("cuda") and torch.cuda.is_available():
+                        ModelLoad.logger.error(
+                            torch.cuda.memory_summary(device=device)
+                        )  # メモリサマリー表示
+                except Exception as mem_e:
+                    ModelLoad.logger.error(f"CUDAメモリサマリーの取得に失敗: {mem_e}")
+                # 状態は変更しない
+                raise OutOfMemoryError(error_message) from e
+        elif current_state is None:
+            ModelLoad.logger.warning(f"モデル '{model_name}' の状態が不明なため、復元できません。")
+            return model
+        else:
+            ModelLoad.logger.debug(
+                f"モデル '{model_name}' は復元不要または未サポートの状態です (現在: {current_state}, 要求: {device})。"
+            )
+            return model
 
     @staticmethod
     def release_model(model_name: str) -> None:
@@ -114,8 +316,49 @@ class ModelLoad:
         if model_name in ModelLoad._MODEL_STATES:
             del ModelLoad._MODEL_STATES[model_name]
 
-        # GPU メモリをクリア
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        ModelLoad.logger.info(f"モデル '{model_name}' を解放しました。")
+        ModelLoad.logger.debug(f"モデル '{model_name}' を解放しました。")
+
+    @staticmethod
+    def release_onnx_components(model_name: str, components: dict[str, Any]) -> dict[str, Any]:
+        """ONNXモデルのコンポーネントを解放します。"""
+        try:
+            # ONNXセッションの参照カウント問題を解決
+            if "session" in components and components["session"] is not None:
+                # 参照を明示的に削除しGCを強制
+                sess = components["session"]
+                components["session"] = None
+                # 必要に応じてセッションのクローズメソッドを呼び出す
+                if hasattr(sess, "close") and callable(sess.close):
+                    sess.close()
+                del sess
+
+            # GCを実行
+            gc.collect()
+
+            return components
+        except Exception as e:
+            ModelLoad.logger.error(f"ONNXモデル '{model_name}' のリソース解放中にエラー発生: {e}")
+            return components
+
+    @staticmethod
+    def _calculate_transformer_size(model: torch.nn.Module) -> float:
+        """Transformerモデルのメモリ使用量を計算（MB単位）"""
+        # パラメータサイズを計算
+        total_params = sum(p.numel() for p in model.parameters())
+        # 4バイト（float32）× パラメータ数 → MB単位に変換
+        param_size = total_params * 4 / (1024 * 1024)
+
+        # パラメータ以外のオーバーヘッドを考慮して20%上乗せ
+        return param_size * 1.2
+
+    @staticmethod
+    def _calculate_onnx_size(model_path: str) -> float:
+        """ONNXモデルのメモリ使用量を計算（MB単位）"""
+        # ファイルサイズをベースにした推定
+        file_size = Path(model_path).stat().st_size / (1024 * 1024)  # MB単位
+
+        # ロード時のメモリ使用量は通常ファイルサイズより大きいため、1.5倍を目安とする
+        return file_size * 1.5

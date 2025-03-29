@@ -1,6 +1,7 @@
 [idolsankaku-eva02-large-tagger-v1]
 model_path = "deepghs/idolsankaku-eva02-large-tagger-v1"
 class = "WDTagger"
+estimated_size_gb = 1.695
 
 [idolsankaku-swinv2-tagger-v1]
 model_path = "deepghs/idolsankaku-swinv2-tagger-v1"
@@ -49,13 +50,15 @@ device = "cpu"
 [BLIPLargeCaptioning]
 model_path = "Salesforce/blip-image-captioning-large"
 class = "BLIPTagger"
+estimated_size_gb = 2.1
 
 ["blip2-opt-2.7b"]
 model_path = "Salesforce/blip2-opt-2.7b"
 class = "BLIP2Tagger"
 device = "cpu"
+estimated_size_gb = 16.74
 
-[blip2-opt-2.7b-coco]
+["blip2-opt-2.7b-coco"]
 model_path = "Salesforce/blip2-opt-2.7b-coco"
 class = "BLIP2Tagger"
 device = "cpu"
@@ -74,14 +77,10 @@ device = "cpu"
 model_path = "Salesforce/blip2-flan-t5-xl"
 class = "BLIP2Tagger"
 device = "cpu"
+estimated_size_gb = 17.624
 
 [blip2-flan-t5-xl-coco]
 model_path = "Salesforce/blip2-flan-t5-xl-coco"
-class = "BLIP2Tagger"
-device = "cpu"
-
-[blip2-flan-t5-xxl]
-model_path = "Salesforce/blip2-flan-t5-xxl"
 class = "BLIP2Tagger"
 device = "cpu"
 

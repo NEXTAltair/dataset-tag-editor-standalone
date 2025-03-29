@@ -95,7 +95,7 @@ def evaluate(images: list[Image.Image], model_list: list[str]) -> dict[str, list
         tagger = get_tagger_instance(model_name)
         results = _evaluate_model(tagger, images)
         logger.debug(
-            f"モデル '{tagger.model_name}' のアノテーション結果を統一した形式に変換結果: {results}"
+            f"モデル '{tagger.model_name}' のアノテーション結果を統一した形式に変換結果: {results[0].keys()} "
         )
 
         # 結果をモデルごとに集約
