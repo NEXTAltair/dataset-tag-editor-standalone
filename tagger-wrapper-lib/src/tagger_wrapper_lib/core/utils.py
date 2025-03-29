@@ -100,22 +100,45 @@ def _get_local_file_path(path: str) -> Path:
     raise FileNotFoundError(f"ローカルファイル '{path}' が見つかりません")
 
 
-def load_file(path_or_url: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> str:
+def extract_zip(file_path: Path) -> Path:
+    """
+    ZIPアーカイブを解凍して、その解凍先ディレクトリのパスを返します。
+
+    Args:
+        file_path (Path): ZIPファイルのパス。
+
+    Returns:
+        Path: 解凍先ディレクトリのパス。
+    """
+    import zipfile
+
+    extract_dir = file_path.parent / file_path.stem
+    if not extract_dir.exists():
+        with zipfile.ZipFile(file_path, "r") as zip_ref:
+            zip_ref.extractall(extract_dir)
+    return extract_dir
+
+
+def load_file(path_or_url: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> Path:
     """
     指定されたパスまたはURLからファイルを取得し、ローカルパスを返します。
+    ZIPファイルの場合は解凍して、そのディレクトリのパスを返します。
 
     Args:
         path_or_url: ローカルパスまたはURL
         cache_dir: キャッシュディレクトリ（オプション）
 
     Returns:
-        str: ローカルファイルへのパス
+        Path: ローカルファイルへのパス、またはZIPの場合は解凍先ディレクトリのパス
 
     Raises:
         RuntimeError: ファイルの取得に失敗した場合
     """
     try:
-        return str(get_file_path(path_or_url, cache_dir))
+        file_path = get_file_path(path_or_url, cache_dir)
+        if file_path.suffix.lower() == ".zip":
+            return extract_zip(file_path)
+        return file_path
     except requests.RequestException as e:
         raise RuntimeError(f"URLからのダウンロードに失敗しました: {e}") from e
     except FileNotFoundError as e:
@@ -128,7 +151,7 @@ def load_file(path_or_url: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> str:
         ) from e
 
 
-def download_wd_tagger_model(model_repo: str) -> tuple[str, str]:
+def download_wd_tagger_model(model_repo: str) -> tuple[Path, Path]:
     """WD-Taggerのモデルをダウンロードする"""
     csv_path = huggingface_hub.hf_hub_download(
         model_repo,
@@ -138,7 +161,7 @@ def download_wd_tagger_model(model_repo: str) -> tuple[str, str]:
         model_repo,
         WD_MODEL_FILENAME,
     )
-    return csv_path, model_path
+    return Path(csv_path), Path(model_path)
 
 
 def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:

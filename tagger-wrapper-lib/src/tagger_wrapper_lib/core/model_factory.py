@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 import onnxruntime as ort
 import psutil
+import tensorflow as tf
 import torch
 from transformers import (
     AutoModelForVision2Seq,
@@ -228,27 +229,74 @@ class ModelLoad:
 
             components = {"session": session, "csv_path": csv_path}
 
-            # モデルサイズの計算と保存（ロード時に実行）
-            if not hasattr(ModelLoad, "_MODEL_SIZES") or model_name not in ModelLoad._MODEL_SIZES:
-                model_size = ModelLoad._calculate_onnx_size(model_path)
-                ModelLoad._calculate_and_save_model_size(model_name, model_size)
+            if model_name not in ModelLoad._MODEL_SIZES:
+                # ONNXモデルの倍率は1.5
+                model_size = ModelLoad._calculate_model_size(model_path, 1.5)
+                ModelLoad._MODEL_SIZES[model_name] = model_size
+                ModelLoad.logger.info(f"モデル '{model_name}' の推定サイズ: {model_size / 1024:.3f}GB")
 
             return components
 
         except ort.capi.onnxruntime_pybind11_state.RuntimeException as e:
-            # 以下は既存のエラーハンドリングコード
             if "Failed to allocate memory" in str(e) or "CUDA error" in str(e):
                 error_message = f"ONNX Runtime メモリ/CUDAエラー: モデル '{model_name}' のロード中"
                 ModelLoad.logger.error(error_message)
                 ModelLoad.logger.error(f"元のONNX Runtimeエラー: {e}")
                 raise OutOfMemoryError(error_message) from e
             else:
-                # その他のRuntimeErrorはそのまま送出
                 raise
         except Exception as e:
             ModelLoad.logger.exception(f"ONNXモデル '{model_name}' のロード中に予期せぬエラーが発生: {e}")
-            if model_name in ModelLoad._MODEL_STATES:
-                del ModelLoad._MODEL_STATES[model_name]
+            raise
+
+    @staticmethod
+    def load_tensorflow_components(
+        model_name: str,
+        model_path: str,
+        device: str,
+        model_format: str = "h5",
+    ) -> dict[str, Any]:
+        """汎用的なTensorflowモデルローダー"""
+        try:
+            components = {}
+            model_dir = utils.load_file(model_path)
+            model_file_path = None
+
+            if model_format == "h5":
+                model_file_path = next(model_dir.glob("*.h5"), None)
+                if not model_file_path:
+                    raise FileNotFoundError(f"H5モデルファイルが見つかりません: {model_dir}")
+                multiplier = 1.2
+                ModelLoad.logger.info(f"Tensorflowモデルをロード中: {model_file_path}")
+                components["model"] = tf.keras.models.load_model(model_file_path, compile=True)
+
+            elif model_format == "saved_model":
+                model_file_path = model_dir  # ディレクトリ全体
+                multiplier = 1.3
+                ModelLoad.logger.info(f"SavedModelをロード中: {model_dir}")
+                components["model"] = tf.saved_model.load(model_dir)
+
+            elif model_format == "pb":
+                pb_model = next(model_dir.glob("*.pb"), None)
+                if not pb_model:
+                    raise FileNotFoundError(f"PBモデルファイルが見つかりません: {model_dir}")
+                model_file_path = pb_model
+                multiplier = 1.3
+                ModelLoad.logger.info(f"PBモデルをロード中: {pb_model}")
+                components["model"] = tf.saved_model.load(model_dir)
+
+            # サイズ計算（テレメトリのためだけに使用）
+            if model_name not in ModelLoad._MODEL_SIZES and model_file_path:
+                model_size = ModelLoad._calculate_model_size(model_file_path, multiplier)
+                ModelLoad._MODEL_SIZES[model_name] = model_size
+                ModelLoad.logger.info(f"モデル '{model_name}' の推定サイズ: {model_size / 1024:.3f}GB")
+
+            # モデルディレクトリを保存
+            components["model_dir"] = model_dir
+
+            return components
+        except Exception as e:
+            ModelLoad.logger.error(f"モデル '{model_name}' のロードに失敗しました: {e}")
             raise
 
     @staticmethod
@@ -308,25 +356,29 @@ class ModelLoad:
         ModelLoad.logger.debug(f"モデル '{model_name}' を解放しました。")
 
     @staticmethod
-    def release_onnx_components(model_name: str, components: dict[str, Any]) -> dict[str, Any]:
-        """ONNXモデルのコンポーネントを解放します。"""
+    def release_model_components(model_name: str, components: dict[str, Any]) -> dict[str, Any]:
+        """モデルコンポーネントのリソースを解放します。"""
         try:
-            # ONNXセッションの参照カウント問題を解決
-            if "session" in components and components["session"] is not None:
-                # 参照を明示的に削除しGCを強制
-                sess = components["session"]
-                components["session"] = None
-                # 必要に応じてセッションのクローズメソッドを呼び出す
-                if hasattr(sess, "close") and callable(sess.close):
-                    sess.close()
-                del sess
+            # ONNXのsessionまたはTensorflowのmodelを解放
+            for key in ["session", "model"]:
+                if key in components and components[key] is not None:
+                    # 参照を保持してから削除
+                    component = components[key]
+                    components[key] = None
+
+                    # クローズメソッドがあれば呼び出す
+                    if hasattr(component, "close") and callable(component.close):
+                        component.close()
+
+                    # 明示的に参照を削除
+                    del component
 
             # GCを実行
             gc.collect()
 
             return components
         except Exception as e:
-            ModelLoad.logger.error(f"ONNXモデル '{model_name}' のリソース解放中にエラー発生: {e}")
+            ModelLoad.logger.error(f"モデル '{model_name}' のリソース解放中にエラー発生: {e}")
             return components
 
     @staticmethod
@@ -341,10 +393,24 @@ class ModelLoad:
         return param_size * 1.2
 
     @staticmethod
-    def _calculate_onnx_size(model_path: str) -> float:
-        """ONNXモデルのメモリ使用量を計算（MB単位）"""
-        # ファイルサイズをベースにした推定
-        file_size = Path(model_path).stat().st_size / (1024 * 1024)  # MB単位
+    def _calculate_model_size(model_file_path: Path, multiplier: float) -> float:
+        """モデルのメモリ使用量を計算（MB単位）
 
-        # ロード時のメモリ使用量は通常ファイルサイズより大きいため、1.5倍を目安とする
-        return file_size * 1.5
+        Args:
+            model_file_path: モデル本体のファイルパス
+            multiplier: メモリーに展開したときにどれくらいの倍率になるか
+
+        Returns:
+            float: 推定メモリ使用量（MB単位）
+        """
+        # ファイルかディレクトリかで異なる計算
+        if model_file_path.is_file():
+            file_size = model_file_path.stat().st_size / (1024 * 1024)  # MB単位
+        elif model_file_path.is_dir():  # saved_modelの場合はディレクトリ
+            file_size = sum(f.stat().st_size for f in model_file_path.glob("**/*") if f.is_file()) / (
+                1024 * 1024
+            )
+        else:
+            return 0.0
+
+        return file_size * multiplier

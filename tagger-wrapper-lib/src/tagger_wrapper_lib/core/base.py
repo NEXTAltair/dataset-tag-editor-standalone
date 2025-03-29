@@ -1,10 +1,12 @@
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Optional, TypedDict
 
 import numpy as np
 import onnxruntime as ort
 import polars as pl
+import tensorflow as tf
 import torch
 from PIL import Image
 from transformers import AutoProcessor
@@ -26,6 +28,13 @@ class ModelComponents(TypedDict):
     # ONNXModel
     session: Optional[ort.InferenceSession]
     csv_path: Optional[str]
+
+
+class TagConfidence(TypedDict):
+    """タグの信頼度情報を表す型定義"""
+
+    confidence: float  # 信頼度
+    source: str  # タグの情報元（例: deepdanbooru）
 
 
 class BaseTagger(ABC):
@@ -229,7 +238,7 @@ class TransformersModel(BaseTagger):
                 self.model_path,
                 self.device,
             )
-            if loaded_model is not None:
+            if loaded_model:
                 self.components = loaded_model
                 logger.info(f"モデルコンポーネントのロード成功: {self.model_name}")
 
@@ -380,7 +389,7 @@ class ONNXModel(BaseTagger):
         traceback: Any,
     ) -> None:
         if hasattr(self, "components"):
-            self.components = ModelLoad.release_onnx_components(self.model_name, self.components)
+            self.components = ModelLoad.release_model_components(self.model_name, self.components)
 
     def _load_labels(self) -> None:
         """ラベル情報をロードし、カテゴリごとのインデックスを設定します。"""
@@ -594,3 +603,66 @@ class ONNXModel(BaseTagger):
         t = difs.argmax()
         threshold = (sorted_probs[t] + sorted_probs[t + 1]) / 2
         return float(threshold)
+
+
+class TensorflowModel(BaseTagger, ABC):
+    def __init__(self, model_name: str):
+        super().__init__(model_name)
+        # Tensorflow共通の設定
+        self.tf_config = tf.compat.v1.ConfigProto()
+        self.tf_config.gpu_options.allow_growth = True
+        self.model_format = "h5"
+
+    def __enter__(self) -> "TensorflowModel":
+        """共通のTensorflowモデルローディング処理"""
+        try:
+            # 直接ModelLoadを使用
+            components = ModelLoad.load_tensorflow_components(
+                self.model_name,
+                self.model_path,
+                self.device,
+                self.model_format,
+            )
+            if components:
+                self.components = components
+                self._load_tags()
+                self.logger.info(f"モデル '{self.model_name}' を正常にロードしました")
+        except Exception as e:
+            self.logger.error(f"モデル '{self.model_name}' のロードに失敗: {e}")
+            raise
+        return self
+
+    def __exit__(
+        self,
+        exception_type: Optional[type[BaseException]],
+        exception_value: Optional[BaseException],
+        traceback: Any,
+    ) -> None:
+        if hasattr(self, "components"):
+            self.components = ModelLoad.release_model_components(self.model_name, self.components)
+
+    def _load_tags(self) -> None:
+        pass
+
+    def _load_tag_file(self, tags_path: Path) -> list[str]:
+        """タグ情報をロードし"""
+        with open(tags_path, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
+
+    def _run_inference(self, processed: list[np.ndarray]) -> tf.Tensor:
+        """バッチ処理のための共通推論処理"""
+        if all(processed_image.ndim == 3 for processed_image in processed):
+            processed_batch = np.stack(processed)
+        else:
+            raise ValueError(f"予期しない入力形式: {[image.shape for image in processed]}")
+
+        # サブクラスでオーバーライド可能
+        return self._tf_model_predict(processed_batch)
+
+    def _tf_model_predict(self, batch_input: np.ndarray) -> tf.Tensor:
+        """
+        Tensorflowモデルの予測処理
+        """
+        if "model" not in self.components:
+            raise ValueError(f"モデル '{self.model_name}' のcomponentsに'model'が見つかりません")
+        return self.components["model"](batch_input)
