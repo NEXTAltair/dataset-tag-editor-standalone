@@ -201,7 +201,7 @@ class BaseTagger(ABC):
         }
 
 
-class TransformerModel(BaseTagger):
+class TransformersModel(BaseTagger):
     """Transformersライブラリを使用するモデル用の抽象クラス。
     BLIP、BLIP2、GITなどのHugging Face Transformersベースのモデルの基底クラスとして機能します。
     """
@@ -216,7 +216,7 @@ class TransformerModel(BaseTagger):
         self.max_length = self.config.get("max_length", 75)
         self.processor_path = self.config.get("processor_path", self.model_path)
 
-    def __enter__(self) -> "TransformerModel":
+    def __enter__(self) -> "TransformersModel":
         """
         モデルの状態に基づいて、必要な場合のみロードまたは復元
         メモリ不足エラーをハンドリングし、VRAM使用量をログに出力
