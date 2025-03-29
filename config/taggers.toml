@@ -6,46 +6,56 @@ estimated_size_gb = 1.695
 [idolsankaku-swinv2-tagger-v1]
 model_path = "deepghs/idolsankaku-swinv2-tagger-v1"
 class = "WDTagger"
+estimated_size_gb = 0.587
 
 [wd-v1-4-convnext-tagger-v2]
 model_path = "SmilingWolf/wd-v1-4-convnext-tagger-v2"
 class = "WDTagger"
+estimated_size_gb = 0.542
 
 [wd-v1-4-convnextv2-tagger-v2]
 model_path = "SmilingWolf/wd-v1-4-convnextv2-tagger-v2"
 class = "WDTagger"
+estimated_size_gb = 0.543
 
 [wd-v1-4-moat-tagger-v2]
 model_path = "SmilingWolf/wd-v1-4-moat-tagger-v2"
 class = "WDTagger"
+estimated_size_gb = 0.456
 
 [wd-v1-4-swinv2-tagger-v2]
 model_path = "SmilingWolf/wd-v1-4-swinv2-tagger-v2"
 class = "WDTagger"
+estimated_size_gb = 0.636
 
 [wd-vit-tagger-v3]
 model_path = "SmilingWolf/wd-vit-tagger-v3"
 class = "WDTagger"
+estimated_size_gb = 0.529
 
 [wd-convnext-tagger-v3]
 model_path = "SmilingWolf/wd-convnext-tagger-v3"
 class = "WDTagger"
 device = "cpu"
+estimated_size_gb = 0.552
 
 [wd-swinv2-tagger-v3]
 model_path = "SmilingWolf/wd-swinv2-tagger-v3"
 class = "WDTagger"
 device = "cpu"
+estimated_size_gb = 0.653
 
 [wd-vit-large-tagger-v3]
 model_path = "SmilingWolf/wd-vit-large-tagger-v3"
 class = "WDTagger"
 device = "cpu"
+estimated_size_gb = 1.761
 
 [wd-eva02-large-tagger-v3]
 model_path = "SmilingWolf/wd-eva02-large-tagger-v3"
 class = "WDTagger"
 device = "cpu"
+estimated_size_gb = 1.761
 
 [BLIPLargeCaptioning]
 model_path = "Salesforce/blip-image-captioning-large"
@@ -62,16 +72,19 @@ estimated_size_gb = 16.74
 model_path = "Salesforce/blip2-opt-2.7b-coco"
 class = "BLIP2Tagger"
 device = "cpu"
+estimated_size_gb = 16.743
 
 ["blip2-opt-6.7b"]
 model_path = "Salesforce/blip2-opt-6.7b"
 class = "BLIP2Tagger"
 device = "cpu"
+estimated_size_gb = 34.658
 
 ["blip2-opt-6.7b-coco"]
 model_path = "Salesforce/blip2-opt-6.7b-coco"
 class = "BLIP2Tagger"
 device = "cpu"
+estimated_size_gb = 34.661
 
 [blip2-flan-t5-xl]
 model_path = "Salesforce/blip2-flan-t5-xl"
@@ -83,7 +96,9 @@ estimated_size_gb = 17.624
 model_path = "Salesforce/blip2-flan-t5-xl-coco"
 class = "BLIP2Tagger"
 device = "cpu"
+estimated_size_gb = 17.627
 
 [GITLargeCaptioning]
 model_path = "microsoft/git-large-coco"
 class = "GITTagger"
+estimated_size_gb = 1.762

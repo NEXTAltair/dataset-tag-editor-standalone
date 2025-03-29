@@ -67,6 +67,7 @@ class BaseTagger(ABC):
     ) -> None:
         pass
 
+    @torch.no_grad()
     def predict(self, images: list[Image.Image]) -> list[dict[str, Any]]:
         """画像リストからタグをチャンクに分割してバッチ予測します。"""
         if not images:
@@ -284,12 +285,11 @@ class TransformerModel(BaseTagger):
         results = []
         try:
             for processed_image in processed_images:
-                with torch.no_grad():
-                    model_out: torch.Tensor = self.components["model"].generate(
-                        **processed_image, max_length=self.max_length
-                    )
-                    self.logger.debug(f"推論結果のデバイス: {model_out.device}, 形状: {model_out.shape}")
-                    results.append(model_out)
+                model_out: torch.Tensor = self.components["model"].generate(
+                    **processed_image, max_length=self.max_length
+                )
+                self.logger.debug(f"推論結果のデバイス: {model_out.device}, 形状: {model_out.shape}")
+                results.append(model_out)
             return results
         except torch.OutOfMemoryError as e:
             # 推論中のメモリ不足エラーログ
@@ -499,7 +499,6 @@ class ONNXModel(BaseTagger):
                 input_name = self.components["session"].get_inputs()[0].name
                 label_name = self.components["session"].get_outputs()[0].name
                 raw_output = self.components["session"].run([label_name], {input_name: input_data})
-                # raw_output[0]を追加（元々の処理と同様）
                 results.append(raw_output[0])
             except ort.capi.onnxruntime_pybind11_state.RuntimeException as e:
                 if "Failed to allocate memory" in str(e):
