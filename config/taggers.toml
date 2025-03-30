@@ -8,6 +8,10 @@ model_path = "deepghs/idolsankaku-swinv2-tagger-v1"
 class = "WDTagger"
 estimated_size_gb = 0.587
 
+[Z3D-E621-Convnext]
+model_path = "toynya/Z3D-E621-Convnext"
+class = "Z3D_E621Tagger"
+
 [wd-v1-4-convnext-tagger-v2]
 model_path = "SmilingWolf/wd-v1-4-convnext-tagger-v2"
 class = "WDTagger"
