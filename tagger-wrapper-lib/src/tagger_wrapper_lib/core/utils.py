@@ -151,16 +151,24 @@ def load_file(path_or_url: str, cache_dir: Path = DEFAULT_CACHE_DIR) -> Path:
         ) from e
 
 
-def download_wd_tagger_model(model_repo: str) -> tuple[Path, Path]:
+def download_onnx_tagger_model(model_repo: str) -> tuple[Path, Path]:
     """WD-Taggerのモデルをダウンロードする"""
+    # リポジトリ内のファイル一覧を取得
+    repo_files = huggingface_hub.list_repo_files(model_repo)
+
+    # CSVファイルを検索（最初に見つかったものを使用）
+    csv_filename = next((f for f in repo_files if f.endswith(".csv")), WD_LABEL_FILENAME)
+
     csv_path = huggingface_hub.hf_hub_download(
         model_repo,
-        WD_LABEL_FILENAME,
+        csv_filename,
     )
+
     model_path = huggingface_hub.hf_hub_download(
         model_repo,
         WD_MODEL_FILENAME,
     )
+
     return Path(csv_path), Path(model_path)
 
 

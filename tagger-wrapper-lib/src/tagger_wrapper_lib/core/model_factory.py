@@ -212,7 +212,7 @@ class ModelLoad:
         session = None
         try:
             # ONNXランタイムセッションの作成
-            csv_path, model_path = utils.download_wd_tagger_model(model_repo)
+            csv_path, model_path = utils.download_onnx_tagger_model(model_repo)
 
             # 利用可能なプロバイダーを取得
             available_providers = ort.get_available_providers()
@@ -232,7 +232,8 @@ class ModelLoad:
             if model_name not in ModelLoad._MODEL_SIZES:
                 # ONNXモデルの倍率は1.5
                 model_size = ModelLoad._calculate_model_size(model_path, 1.5)
-                ModelLoad._MODEL_SIZES[model_name] = model_size
+                # モデルサイズを計算して保存
+                ModelLoad._calculate_and_save_model_size(model_name, model_size)
                 ModelLoad.logger.info(f"モデル '{model_name}' の推定サイズ: {model_size / 1024:.3f}GB")
 
             return components
@@ -357,9 +358,11 @@ class ModelLoad:
 
     @staticmethod
     def release_model_components(model_name: str, components: dict[str, Any]) -> dict[str, Any]:
-        """モデルコンポーネントのリソースを解放します。"""
+        """
+        ONNXのsessionまたはTensorflowのmodelを解放
+        モデルコンポーネントのリソースを解放
+        """
         try:
-            # ONNXのsessionまたはTensorflowのmodelを解放
             for key in ["session", "model"]:
                 if key in components and components[key] is not None:
                     # 参照を保持してから削除
