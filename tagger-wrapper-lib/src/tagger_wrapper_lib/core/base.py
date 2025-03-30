@@ -5,7 +5,6 @@ from typing import Any, Optional, TypedDict
 
 import numpy as np
 import onnxruntime as ort
-import polars as pl
 import tensorflow as tf
 import torch
 from PIL import Image
@@ -391,18 +390,10 @@ class ONNXModel(BaseTagger):
         if hasattr(self, "components"):
             self.components = ModelLoad.release_model_components(self.model_name, self.components)
 
+    @abstractmethod
     def _load_labels(self) -> None:
         """ラベル情報をロードし、カテゴリごとのインデックスを設定します。"""
-        # ラベルファイルをpolarsで読み込み
-        tags_df = pl.read_csv(self.components["csv_path"])
-
-        # ラベル名を取得
-        self.labels = tags_df["name"].to_list()
-
-        categories = tags_df["category"].to_list()
-        self.rating_indexes = [i for i, cat in enumerate(categories) if cat == 9]
-        self.general_indexes = [i for i, cat in enumerate(categories) if cat == 0]
-        self.character_indexes = [i for i, cat in enumerate(categories) if cat == 4]
+        pass
 
     def _analyze_model_input_format(self) -> None:
         """モデル入力形式を分析し、ターゲットサイズと次元形式を判定・保存する"""
@@ -526,73 +517,97 @@ class ONNXModel(BaseTagger):
     def _format_predictions(
         self, raw_outputs: list[np.ndarray[Any, np.dtype[Any]]]
     ) -> list[dict[str, dict[str, float]]]:
-        """バッチ出力をフォーマットします。"""
+        """バッチ出力結果のナマの値をフォーマットします。"""
         result_list = []
         for raw_output in raw_outputs:
-            # 各出力に対して処理を適用
-            ratings = self._extract_ratings(raw_output)
-            general_tags = self._extract_general_tags(raw_output)
-            character_tags = self._extract_character_tags(raw_output)
+            # 動的にカテゴリと対応するインデックスのマッピングを作成
+            category_mapping = {}
 
-            result_list.append(
-                {
-                    "ratings": ratings,
-                    "general": general_tags,
-                    "character": character_tags,
-                }
-            )
+            # インスタンス変数を探索して、"_indexes"で終わる属性を見つける
+            for attr_name in dir(self):
+                if attr_name.endswith("_indexes") and isinstance(getattr(self, attr_name), list):
+                    # 先頭の"_"を除去し、末尾の"_indexes"も除去してキー名を作成
+                    category_key = attr_name[:-8]  # "_indexes"の8文字を除去
+                    if category_key.startswith("_"):  # 先頭の"_"がある場合は除去
+                        category_key = category_key[1:]
+
+                    # category_keyが空白でない場合のみマッピングに追加
+                    if category_key:
+                        category_mapping[category_key] = getattr(self, attr_name)
+
+            # 既存のコード互換性のためにレーティング用のキーを調整
+            if "rating" in category_mapping:
+                category_mapping["ratings"] = category_mapping.pop("rating")
+
+            # すべてのカテゴリをループで処理
+            result = {}
+            for category_key, indexes in category_mapping.items():
+                result[category_key] = self._extract_tags_by_indexes(raw_output, indexes)
+
+            result_list.append(result)
         return result_list
+
+    def _extract_tags_by_indexes(
+        self, raw_output: np.ndarray[Any, np.dtype[Any]], indexes: list[int]
+    ) -> dict[str, float]:
+        """指定されたインデックスに対応するタグを抽出します。
+
+        Args:
+            raw_output: 予測出力のnumpy配列
+            indexes: 抽出するラベルのインデックスリスト
+
+        Returns:
+            タグ名と予測確率のマッピング辞書
+        """
+        # ラベルと予測値をマッピング
+        labels = list(zip(self.labels, raw_output[0].astype(float), strict=False))
+        # 指定されたインデックスのタグのみ取得
+        tag_names = [labels[i] for i in indexes]
+        return dict(tag_names)
 
     def _generate_tags(self, formatted_outputs: list[dict[str, dict[str, float]]]) -> list[list[str]]:
         """バッチ出力からタグリストを生成します。"""
         all_tags_list = []
 
+        # 各カテゴリのデフォルトの閾値を定義
+        default_thresholds = {
+            "general": 0.35,
+            "character": 0.85,
+            # 必要に応じて他のカテゴリのデフォルト閾値を追加
+        }
+
         for formatted_output in formatted_outputs:
-            # 各出力に対してタグを生成
-            # 以下は既存の処理を各出力に適用
-            general_tags = formatted_output["general"]
-            general_probs = np.array(list(general_tags.values()))
-            general_threshold = self._calculate_mcut_threshold(general_probs)
-            general_threshold = max(0.35, general_threshold)
+            selected_tags = []
 
-            character_tags = formatted_output["character"]
-            character_probs = np.array(list(character_tags.values()))
-            character_threshold = self._calculate_mcut_threshold(character_probs)
-            character_threshold = max(0.85, character_threshold)
+            # 各カテゴリ別に処理
+            for category, tags in formatted_output.items():
+                # レーティングカテゴリはスキップ（最終結果には含めない）
+                if category == "ratings":
+                    continue
 
-            selected_general = [tag for tag, prob in general_tags.items() if prob > general_threshold]
-            selected_character = [tag for tag, prob in character_tags.items() if prob > character_threshold]
+                # カテゴリに対応するタグと確率値を取得
+                probs = np.array(list(tags.values()))
 
-            all_selected_tags = selected_general + selected_character
-            escaped_tags = [tag.replace("(", r"\(").replace(")", r"\)") for tag in all_selected_tags]
+                # タグがない場合はスキップ
+                if len(probs) == 0:
+                    continue
 
+                # MCut閾値を計算
+                threshold = self._calculate_mcut_threshold(probs)
+
+                # カテゴリごとのデフォルト閾値と比較して最大値を使用
+                if category in default_thresholds:
+                    threshold = max(threshold, default_thresholds[category])
+
+                # 閾値を超えるタグのみを選択
+                category_selected = [tag for tag, prob in tags.items() if prob > threshold]
+                selected_tags.extend(category_selected)
+
+            # 特殊文字のエスケープ処理
+            escaped_tags = [tag.replace("(", r"\(").replace(")", r"\)") for tag in selected_tags]
             all_tags_list.append(escaped_tags)
 
         return all_tags_list
-
-    def _extract_ratings(self, raw_output: np.ndarray[Any, np.dtype[Any]]) -> dict[str, float]:
-        """評価タグを抽出します。"""
-        # ラベルと予測値をマッピング
-        labels = list(zip(self.labels, raw_output[0].astype(float), strict=False))
-        # 評価タグのみ取得
-        ratings_names = [labels[i] for i in self.rating_indexes]
-        return dict(ratings_names)
-
-    def _extract_general_tags(self, raw_output: np.ndarray[Any, np.dtype[Any]]) -> dict[str, float]:
-        """一般タグを抽出します。"""
-        # ラベルと予測値をマッピング
-        labels = list(zip(self.labels, raw_output[0].astype(float), strict=False))
-        # 一般タグのみ取得
-        general_names = [labels[i] for i in self.general_indexes]
-        return dict(general_names)
-
-    def _extract_character_tags(self, raw_output: np.ndarray[Any, np.dtype[Any]]) -> dict[str, float]:
-        """キャラクタータグを抽出します。"""
-        # ラベルと予測値をマッピング
-        labels = list(zip(self.labels, raw_output[0].astype(float), strict=False))
-        # キャラクタータグのみ取得
-        character_names = [labels[i] for i in self.character_indexes]
-        return dict(character_names)
 
     def _calculate_mcut_threshold(self, probs: np.ndarray[Any, np.dtype[Any]]) -> float:
         """Maximum Cut Thresholding (MCut)アルゴリズムで閾値を計算します。"""
@@ -649,7 +664,7 @@ class TensorflowModel(BaseTagger, ABC):
         with open(tags_path, "r", encoding="utf-8") as f:
             return [line.strip() for line in f if line.strip()]
 
-    def _run_inference(self, processed: list[np.ndarray]) -> tf.Tensor:
+    def _run_inference(self, processed: list[np.ndarray[Any, np.dtype[Any]]]) -> tf.Tensor:
         """バッチ処理のための共通推論処理"""
         if all(processed_image.ndim == 3 for processed_image in processed):
             processed_batch = np.stack(processed)
@@ -659,7 +674,7 @@ class TensorflowModel(BaseTagger, ABC):
         # サブクラスでオーバーライド可能
         return self._tf_model_predict(processed_batch)
 
-    def _tf_model_predict(self, batch_input: np.ndarray) -> tf.Tensor:
+    def _tf_model_predict(self, batch_input: np.ndarray[Any, np.dtype[Any]]) -> tf.Tensor:
         """
         Tensorflowモデルの予測処理
         """

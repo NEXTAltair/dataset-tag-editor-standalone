@@ -12,6 +12,7 @@ launch_user.bat
 coverage.xml
 .coverage
 .cursor/
+
+# 参考用リポジトリ
 stable-diffusion-webui-wd14-tagger/
 DeepDanbooru/
-results/
