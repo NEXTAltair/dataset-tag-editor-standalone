@@ -1,10 +1,22 @@
-# Byte-compiled / optimized / DLL files
+# Python関連ファイル
 __pycache__/
+
+# 開発環境ファイル
 .vscode/
+.cursor/
+.venv/
 venv/
+
+# OSが生成するファイル
+.DS_Store
+
+# プロジェクト設定ファイル
+.env
+
+# データとキャッシュディレクトリ
 temp/
 models/
-.DS_Store
-config.json
-settings.json
+
+# スクリプトファイル
 launch_user.bat
+
