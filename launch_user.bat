@@ -2,8 +2,5 @@
 
 set COMMANDLINE_ARGS=
 
-:: venvのactivate
-call ".\venv\Scripts\activate.bat"
-
-:: パッケージ経由で実行
-dataset-tag-editor %COMMANDLINE_ARGS%
+:: uvの仮想環境で実行
+uv run dataset-tag-editor %COMMANDLINE_ARGS%
