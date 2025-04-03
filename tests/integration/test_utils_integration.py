@@ -5,7 +5,7 @@ import time
 from pytest_bdd import given, when, then, parsers, scenarios
 import pytest
 
-from scorer_wrapper_lib.core.utils import (
+from image_annotator_lib.core.utils import (
     load_file,
     setup_logger,
     load_model_config,
@@ -44,9 +44,7 @@ def given_app_is_running():
     pass
 
 
-@given(
-    "設定ファイルにモデルパラメーターが定義されている", target_fixture="config_fixture"
-)
+@given("設定ファイルにモデルパラメーターが定義されている", target_fixture="config_fixture")
 def given_model_parameters_defined():
     return Path("config/models.toml")
 
@@ -131,9 +129,9 @@ def then_file_is_not_downloaded_again(cached_file_info, source_url_or_path):
 
     # ファイルの最終更新時刻が変わっていないことを確認（ダウンロードされていない証拠）
     current_mtime = Path(source_url_or_path).stat().st_mtime
-    assert current_mtime == cached_file_info["mtime"], (
-        "ファイルが再ダウンロードされました（更新時刻が変更されています）"
-    )
+    assert (
+        current_mtime == cached_file_info["mtime"]
+    ), "ファイルが再ダウンロードされました（更新時刻が変更されています）"
 
 
 @then("その操作の詳細が適切にログに記録される")
@@ -143,7 +141,7 @@ def then_operation_details_logged(log_fixture):
     assert log_fixture.level == logging.INFO
 
     # ログファイルが作成されていることを確認
-    log_file = Path("logs/scorer_wrapper_lib.log")
+    log_file = Path("logs/image_annotator_lib.log")
     assert log_file.exists()
 
 
@@ -153,12 +151,8 @@ def then_admin_can_check_system_status(log_fixture):
     assert len(log_fixture.handlers) >= 2  # ストリームハンドラとファイルハンドラ
 
     # ハンドラの種類を確認
-    has_stream_handler = any(
-        isinstance(h, logging.StreamHandler) for h in log_fixture.handlers
-    )
-    has_file_handler = any(
-        isinstance(h, logging.FileHandler) for h in log_fixture.handlers
-    )
+    has_stream_handler = any(isinstance(h, logging.StreamHandler) for h in log_fixture.handlers)
+    has_file_handler = any(isinstance(h, logging.FileHandler) for h in log_fixture.handlers)
 
     assert has_stream_handler, "ストリームハンドラが設定されていません"
     assert has_file_handler, "ファイルハンドラが設定されていません"

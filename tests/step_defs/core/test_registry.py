@@ -6,13 +6,13 @@ import pytest
 
 from unittest.mock import patch
 from pytest_bdd import given, when, then, scenarios
-from scorer_wrapper_lib.scorer_registry import (
-    register_scorers,
+from image_annotator_lib.core.registry import (
     get_cls_obj_registry,
+    register_annotators,
 )
 
 # シナリオファイルの読み込み
-scenarios("../features/scorer_registry.feature")
+scenarios("../../features/core/registry.feature")
 
 # テスト用のフィクスチャデータ
 TEST_MODULE_DIR = "test_modules"
@@ -43,16 +43,16 @@ def given_model_registry_built(test_config_toml):
         "TestScorer02": type("TestScorer02", (), {"predict": lambda x: x * 2}),
     }
 
-    # register_scorersの中で使用される依存関係をモック化
+    # register_annotatorsの中で使用される依存関係をモック化
     with patch(
-        "scorer_wrapper_lib.scorer_registry.load_model_config",
+        "image_annotator_lib.core.registry.load_model_config",
         return_value=test_config_toml,
     ):
         with patch(
-            "scorer_wrapper_lib.scorer_registry.gather_available_classes",
+            "image_annotator_lib.core.registry._gather_available_classes",
             return_value=mock_classes,
         ):
-            registry = register_scorers()
+            registry = register_annotators()
             return registry
 
 
@@ -67,7 +67,7 @@ def when_available_model_names_list_obtained(test_registry):
     print("\n=== デバッグ情報 ===")
     print(f"テストレジストリのキー: {list(test_registry.keys())}")
 
-    from scorer_wrapper_lib.scorer_registry import _MODEL_CLASS_OBJ_REGISTRY
+    from image_annotator_lib.core.registry import _MODEL_CLASS_OBJ_REGISTRY
 
     print(f"グローバルレジストリのキー: {list(_MODEL_CLASS_OBJ_REGISTRY.keys())}")
     print("=== デバッグ情報終了 ===\n")
@@ -95,17 +95,17 @@ def then_model_name_key_model_class_object_registered(test_registry):
 
     # 各値がクラスオブジェクト（type型）であることを確認
     for model_name, model_class in test_registry.items():
-        assert isinstance(model_class, type), (
-            f"値はクラスオブジェクトである必要があります: {model_name} -> {model_class}"
-        )
+        assert isinstance(
+            model_class, type
+        ), f"値はクラスオブジェクトである必要があります: {model_name} -> {model_class}"
 
 
 @then("レジストリの内容は設定ファイルの内容と一致する")
 def then_registry_content_matches_config_file(test_config_toml, test_registry):
     for model_name, model_config in test_config_toml.items():
-        assert model_name in test_registry.keys(), (
-            f"config_toml に存在するモデル: {model_name} がレジストリに存在しません"
-        )
+        assert (
+            model_name in test_registry.keys()
+        ), f"config_toml に存在するモデル: {model_name} がレジストリに存在しません"
 
         # クラス名で比較（レジストリのクラスオブジェクトから__name__を取得）
         class_name = test_registry[model_name].__name__
@@ -126,9 +126,9 @@ def then_model_name_corresponding_class_object_returned(test_specific_model):
     assert test_specific_model is not None, "モデルが取得できませんでした"
 
     # 取得したオブジェクトがクラス（type）であることを確認
-    assert isinstance(test_specific_model, type), (
-        f"取得したオブジェクトはクラスオブジェクトではありません: {type(test_specific_model)}"
-    )
+    assert isinstance(
+        test_specific_model, type
+    ), f"取得したオブジェクトはクラスオブジェクトではありません: {type(test_specific_model)}"
 
     # クラスオブジェクトの名前が意味のある値であることを確認（オプション）
     class_name = test_specific_model.__name__
