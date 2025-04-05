@@ -1,0 +1,31 @@
+{
+  "folders": [
+    {
+      "name": "dataset-tag-editor-root",
+      "path": ".."
+    },
+    {
+      "name": "scorer-wrapper-lib",
+      "path": "../scorer-wrapper-lib"
+    },
+    {
+      "name": "tagger-wrapper-lib",
+      "path": "../tagger-wrapper-lib"
+    },
+    {
+      "name": "image-annotator-lib",
+      "path": "../image-annotator-lib"
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "h:/Git/dataset-tag-editor-standalone-1/.venv/Scripts/python.exe",
+    "python.testing.pytestPath": "h:/Git/dataset-tag-editor-standalone-1/.venv/Scripts/pytest.exe",
+    "python.envFile": ".env",
+    "python.testing.unittestEnabled": false,
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "always"
+    },
+    "search-online.search-engine": "perplexity"
+  }
+}

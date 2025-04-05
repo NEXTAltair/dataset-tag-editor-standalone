@@ -1,18 +1,18 @@
 # Byte-compiled / optimized / DLL files
 __pycache__
-.vscode
-venv
+.venv/
+venv/
+.env
 temp
 models
 .DS_Store
 config.json
 settings.json
 launch_user.bat
-.env
 coverage.xml
 .coverage
-.cursor/
 
 # 参考用リポジトリ
 stable-diffusion-webui-wd14-tagger/
 DeepDanbooru/
+

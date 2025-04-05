@@ -1,15 +1,36 @@
+# 簡易テスト用コード
+# 戻り値の確認のため
+
 from PIL import Image
 
-# from scorer_wrapper_lib import evaluate as scorer_evaluate
-from tagger_wrapper_lib import evaluate as tagger_evaluate
+from image_annotator_lib import annotate, list_available_annotators
 
-scorer = ["ImprovedAesthetic"]
-tagger = "GITLargeCaptioning"
+# 利用可能なスコアラーを表示
+print("Available models:", list_available_annotators())
 
-image = Image.open("tests/resources/img/1_img/file05.webp")
-# results = scorer_evaluate([image], scorer)
-# print(f"scorer_evaluate: {results}")
+# アノテーションする画像を用意
+image = [Image.open("tests/resources/img/1_img/file01.webp")]
+images = [
+    Image.open("tests/resources/img/1_img/file01.webp"),
+    Image.open("tests/resources/img/1_img/file02.webp"),
+    Image.open("tests/resources/img/1_img/file03.webp"),
+    Image.open("tests/resources/img/1_img/file04.webp"),
+]
 
-results2 = tagger_evaluate([image], [tagger])
-print(f"tagger_evaluate: {results2}")
-# print(f"tagger_evaluate: {results2[tagger][0]['annotation']}")
+# # 各モデルでアノテーションを実行 (単一画像x単一モデル)
+# for model_name in list_available_annotators():
+#     print(f"\\nEvaluating with {model_name} (single image):")
+#     try:
+#         result = annotate(images, [model_name])
+#         print(result)
+#     except Exception as e:
+#         print(f"Error evaluating with {model_name}: {e}")
+
+# 各モデルでアノテーションを実行 (複数画像)
+for model_name in list_available_annotators():
+    print(f"\\nEvaluating with {model_name} (multiple images):")
+    try:
+        results = annotate(images, [model_name])
+        print(results)
+    except Exception as e:
+        print(f"Error evaluating with {model_name}: {e}")

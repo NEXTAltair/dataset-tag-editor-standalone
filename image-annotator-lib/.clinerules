@@ -1,0 +1,8 @@
+# image-annotator-lib 開発ルール
+
+- **predict メソッドのオーバーライド禁止**: `image-annotator-lib` の `BaseAnnotator` を継承するサブクラス（個別のモデルクラス）では、`predict` メソッドを実装しない（または移行時に削除する）。予測処理の実行は `BaseAnnotator` の共通 `predict` メソッドに完全に委ね、モデル固有の処理は `_preprocess_images`, `_run_inference`, `_format_predictions` 等のメソッドに実装すること。**`predict` の戻り値は `list[AnnotationResult]` であり、その構造 (特に `phash`, `model_name`, `tags`, `formatted_output`, `error` フィールドを含むこと) は厳守すること。**
+- **annotate 関数の戻り値形式**: `src/image_annotator_lib/api.py` の `annotate` 関数は、画像と結果の紐付けを明確にするため、戻り値として **`{phash: {model_name: {"tags": [...], "formatted_output": ..., "error": ...}}}`** という形式の辞書を使用すること。pHash が取得できない場合は代替キー (`unknown_image_{index}`) を使用する。
+- **YAGNI 原則の遵守**: 「いつか使うかもしれない」機能は実装せず、必要最低限の設計を維持すること。不要な機能やフィールドは積極的に削除する。
+- **エラー抑制コメントの禁止**: Mypy 等の型チェックエラーやリントエラーは、`# type: ignore` や `# noqa` などのコメントで抑制せず、コードや型定義を修正して根本的に解決すること。やむを得ない場合は理由をコメントに残す。
+- **モダンな型ヒントの使用**: `typing.Type` や `typing.List` などの古い型ヒントではなく、Python 3.9 以降で推奨される `type`, `list`, `dict` などの組み込み型や `collections.abc` の型を使用すること。
+- **半角記号の使用**: コードやコメント内では、原則として半角記号を使用し、全角記号（例: `，`、`．`、`（`、`）`）は避けること。
