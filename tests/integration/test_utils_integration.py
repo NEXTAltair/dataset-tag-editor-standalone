@@ -129,9 +129,9 @@ def then_file_is_not_downloaded_again(cached_file_info, source_url_or_path):
 
     # ファイルの最終更新時刻が変わっていないことを確認（ダウンロードされていない証拠）
     current_mtime = Path(source_url_or_path).stat().st_mtime
-    assert (
-        current_mtime == cached_file_info["mtime"]
-    ), "ファイルが再ダウンロードされました（更新時刻が変更されています）"
+    assert current_mtime == cached_file_info["mtime"], (
+        "ファイルが再ダウンロードされました（更新時刻が変更されています）"
+    )
 
 
 @then("その操作の詳細が適切にログに記録される")

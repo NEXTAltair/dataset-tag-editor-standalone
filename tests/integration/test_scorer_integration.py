@@ -14,15 +14,15 @@ import psutil
 import torch
 from PIL import Image
 from pytest_bdd import given, scenarios, then, when
-from scorer_wrapper_lib.scorer import (
+from image_annotator_lib.api import (
     _MODEL_INSTANCE_REGISTRY,
-    evaluate,
-    get_scorer_instance,
+    annotate,
+    get_annotator_instance,
 )  # type: ignore
-from scorer_wrapper_lib.scorer_registry import (
+from image_annotator_lib.core.registry import (
     ModelClass,
     get_cls_obj_registry,
-    list_available_scorers,
+    list_available_annotators,
 )  # type: ignore
 
 scenarios("../features/scorer.feature")
@@ -53,7 +53,7 @@ def given_initialize_scorer_library() -> dict[str, ModelClass]:
 
 @given("レジストリに登録されたモデルのリストを取得する", target_fixture="available_models")
 def given_get_available_models() -> list[str]:
-    return list_available_scorers()
+    return list_available_annotators()
 
 
 @given("インスタンス化済みのモデルクラスが存在する", target_fixture="instantiated_models")
@@ -61,7 +61,7 @@ def given_instantiated_models(scorer_registry: dict[str, ModelClass]) -> dict[st
     instantiated = {}
     # scorer_registryからモデル名を取得してインスタンス化
     for model_name in scorer_registry.keys():
-        instantiated[model_name] = get_scorer_instance(model_name)
+        instantiated[model_name] = get_annotator_instance(model_name)
     return instantiated  # _MODEL_INSTANCE_REGISTRY と中身同じ
 
 
@@ -116,7 +116,7 @@ def given_all_models(scorer_registry) -> list[str]:
 def when_instantiate_all_models(available_models: list[str]) -> dict[str, Any]:
     instantiated = {}
     for model_name in available_models:
-        instantiated[model_name] = get_scorer_instance(model_name)
+        instantiated[model_name] = get_annotator_instance(model_name)
     return instantiated
 
 
@@ -128,8 +128,8 @@ def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
     # 元のインスタンスを記録
     original_instance = instantiated_models[model_name]
 
-    # get_scorer_instanceを使ってキャッシュから取得（_create_scorer_instanceではない）
-    reused_instance = get_scorer_instance(model_name)
+    # get_annotator_instanceを使ってキャッシュから取得（_create_scorer_instanceではない）
+    reused_instance = get_annotator_instance(model_name)
 
     # 比較のために必要な情報を返す
     return {
@@ -144,7 +144,7 @@ def when_score_image(
     valid_image: list[Image.Image], model_for_scoring: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで評価する
-    return evaluate(valid_image, model_for_scoring)
+    return annotate(valid_image, model_for_scoring)
 
 
 @when("これらの画像を一括評価する", target_fixture="scoring_results")
@@ -152,7 +152,7 @@ def when_score_images(
     valid_images: list[Image.Image], model_for_scoring: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
-    return evaluate(valid_images, model_for_scoring)
+    return annotate(valid_images, model_for_scoring)
 
 
 @when("この画像を複数のモデルで評価する", target_fixture="scoring_results")
@@ -160,7 +160,7 @@ def when_score_image_multiple_models(
     valid_image: list[Image.Image], multiple_models: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
-    return evaluate(valid_image, multiple_models)
+    return annotate(valid_image, multiple_models)
 
 
 @when("これらの画像を複数のモデルで一括評価する", target_fixture="scoring_results")
@@ -168,11 +168,11 @@ def when_score_images_multiple_models(
     valid_images: list[Image.Image], multiple_models: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
-    return evaluate(valid_images, multiple_models)
+    return annotate(valid_images, multiple_models)
 
 
 @when("これらの画像を複数回連続で評価する", target_fixture="stress_test_results")
-def when_evaluate_images_repeatedly(valid_images_large: list[Image.Image], all_models: list[str]) -> dict:
+def when_annotate_images_repeatedly(valid_images_large: list[Image.Image], all_models: list[str]) -> dict:
     results = []
     memory_usage = []  # CPUメモリ
     gpu_memory_usage = []  # VRAM
@@ -184,7 +184,7 @@ def when_evaluate_images_repeatedly(valid_images_large: list[Image.Image], all_m
         round_start = time.time()
 
         # 評価実行
-        round_results = evaluate(valid_images_large, all_models)
+        round_results = annotate(valid_images_large, all_models)
         results.append(round_results)
 
         # CPUメモリ記録
@@ -231,7 +231,7 @@ def when_switch_models_repeatedly(valid_image: list[Image.Image], all_models: li
             memory_readings.append(process.memory_info().rss / 1024 / 1024)  # MB単位
 
         # 単一モデルで評価
-        result = evaluate(valid_image, [model_name])
+        result = annotate(valid_image, [model_name])
         results.append(result)
 
     total_time = time.time() - start_time

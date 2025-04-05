@@ -6,11 +6,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pytest_bdd import given, then, when, parsers, scenarios
 
-from scorer_wrapper_lib.scorer import (
+from image_annotator_lib.api import (
     _MODEL_INSTANCE_REGISTRY,
-    _create_scorer_instance,
-    get_scorer_instance,
-    evaluate,
+    _create_annotator_instance,
+    get_annotator_instance,
+    annotate,
 )
 
 scenarios("../features/scorer.feature")
@@ -22,7 +22,7 @@ def mock_registry():
     registry = {}
 
     # get_cls_obj_registryのモック
-    patcher = patch("scorer_wrapper_lib.scorer.get_cls_obj_registry")
+    patcher = patch("image_annotator_lib.core.registry.get_cls_obj_registry")
     mock_get_cls_obj_registry = patcher.start()
     mock_get_cls_obj_registry.return_value = registry
 
@@ -94,28 +94,26 @@ def when_get_model_class_from_registry(target_model_list, mock_registry):
     target_fixture="test_execution_result",
 )
 def when_instantiate_model_class(model_name, model_class):
-    result = _create_scorer_instance(model_name)
-    assert result is model_class["expected_instance"], (
-        "生成されたインスタンスがモックと一致しない"
-    )
+    result = _create_annotator_instance(model_name)
+    assert result is model_class["expected_instance"], "生成されたインスタンスがモックと一致しない"
     return result
 
 
 @when(
-    "同じモデルで2回スコアラーインスタンスを取得する",
+    "同じモデルで2回アノテータインスタンスを取得する",
     target_fixture="test_execution_result",
 )
-def when_get_scorer_instance_called_twice(target_model_list, mock_registry):
-    """get_scorer_instanceを2回呼び出して、同じインスタンスが返されることを確認"""
+def when_get_annotator_instance_called_twice(target_model_list, mock_registry):
+    """get_annotator_instanceを2回呼び出して、同じインスタンスが返されることを確認"""
     model_name = target_model_list[0]
     register, _ = mock_registry
 
     # 1回目の呼び出し
     register(model_name)
-    first_instance = get_scorer_instance(model_name)
+    first_instance = get_annotator_instance(model_name)
 
     # 2回目の呼び出し
-    second_instance = get_scorer_instance(model_name)
+    second_instance = get_annotator_instance(model_name)
 
     # 両方のインスタンスを返して検証に使用
     return {
@@ -125,22 +123,18 @@ def when_get_scorer_instance_called_twice(target_model_list, mock_registry):
     }
 
 
-@when(
-    "各モデルのスコアラーインスタンスを取得する", target_fixture="test_execution_result"
-)
-def when_get_scorer_instance_for_each_model(target_model_list, mock_registry):
+@when("各モデルのアノテータインスタンスを取得する", target_fixture="test_execution_result")
+def when_get_annotator_instance_for_each_model(target_model_list, mock_registry):
     register, _ = mock_registry
     instances = {}
     for model_name in target_model_list:
         register(model_name)
-        instances[model_name] = get_scorer_instance(model_name)
+        instances[model_name] = get_annotator_instance(model_name)
     return instances
 
 
 @when("画像評価実行", target_fixture="models_result")
-def when_evaluate_with_multi_models_execution(
-    target_model_list, target_images, mock_registry
-):
+def when_annotate_with_multi_models_execution(target_model_list, target_images, mock_registry):
     register, registry = mock_registry
 
     # 各モデルの基本的なモックを登録し、predictの戻り値を設定
@@ -160,7 +154,7 @@ def when_evaluate_with_multi_models_execution(
     image_count = len(target_images)
 
     # 評価実行
-    result = evaluate(target_images, target_model_list)
+    result = annotate(target_images, target_model_list)
 
     return {
         "result": result,
@@ -169,8 +163,8 @@ def when_evaluate_with_multi_models_execution(
     }
 
 
-@then("対応したスコアラーインスタンスが生成される")
-def then_scorer_instance_created(test_execution_result, target_model_list):
+@then("対応したアノテータインスタンスが生成される")
+def then_annotator_instance_created(test_execution_result, target_model_list):
     assert test_execution_result is not None
     assert test_execution_result.model_name == target_model_list[0]
 
@@ -186,12 +180,10 @@ def then_same_instance_returned(test_execution_result):
 @then("各インスタンスは対応するモデル名を持つ")
 def then_instance_has_correct_model_name(test_execution_result, target_model_list):
     for model_name in target_model_list:
-        assert model_name in test_execution_result, (
-            f"モデル {model_name} のインスタンスが見つかりません"
-        )
-        assert test_execution_result[model_name].model_name == model_name, (
-            f"モデル {model_name} のインスタンスが正しいモデル名を持っていません"
-        )
+        assert model_name in test_execution_result, f"モデル {model_name} のインスタンスが見つかりません"
+        assert (
+            test_execution_result[model_name].model_name == model_name
+        ), f"モデル {model_name} のインスタンスが正しいモデル名を持っていません"
 
 
 @then("両方のモデルがキャッシュされていることを確認する")
@@ -199,12 +191,8 @@ def then_both_models_are_cached(initialized_models):
     first_model = initialized_models["first_model"]
     second_model = initialized_models["second_model"]
 
-    assert first_model in _MODEL_INSTANCE_REGISTRY, (
-        f"{first_model}がキャッシュされていない"
-    )
-    assert second_model in _MODEL_INSTANCE_REGISTRY, (
-        f"{second_model}がキャッシュされていない"
-    )
+    assert first_model in _MODEL_INSTANCE_REGISTRY, f"{first_model}がキャッシュされていない"
+    assert second_model in _MODEL_INSTANCE_REGISTRY, f"{second_model}がキャッシュされていない"
     assert (
         _MODEL_INSTANCE_REGISTRY[first_model] is initialized_models["first_instance"]
     ), "キャッシュされたインスタンスが一致しない"
@@ -231,32 +219,36 @@ def then_models_result_length_matches_image_count(models_result):
     # 各モデルの結果数が画像数と一致
     for model in model_list:
         assert model in result, f"モデル{model}の結果が含まれていない"
-        assert len(result[model]) == image_count, (
-            f"モデル{model}の結果数({len(result[model])})が画像数({image_count})と一致しない"
-        )
+        assert (
+            len(result[model]) == image_count
+        ), f"モデル{model}の結果数({len(result[model])})が画像数({image_count})と一致しない"
 
 
 # 基本的な機能テスト
-def test_create_scorer_instance(mock_registry):
-    """スコアラーインスタンスの生成テスト"""
+def test_create_annotator_instance(mock_registry):
+    """アノテータインスタンスの生成テスト"""
     register, registry = mock_registry
     model_name = "test_model"
-    register(model_name)
+    register(model_name)  # モデルを登録
 
-    result = _create_scorer_instance(model_name)
-    assert result.model_name == model_name
+    result = _create_annotator_instance(model_name)
+
+    assert result is registry[model_name].return_value
 
 
-def test_get_scorer_instance_caching(mock_registry):
+def test_get_annotator_instance_caching(mock_registry):
     """キャッシュ機能のテスト"""
     register, registry = mock_registry
     model_name = "test_model"
-    register(model_name)
+    register(model_name)  # モデルを登録
 
     # 1回目の呼び出し
-    first = get_scorer_instance(model_name)
-    assert model_name in _MODEL_INSTANCE_REGISTRY
-
+    first = get_annotator_instance(model_name)
     # 2回目の呼び出し
-    second = get_scorer_instance(model_name)
-    assert first is second  # 同じインスタンスが返される
+    second = get_annotator_instance(model_name)
+
+    # 同じインスタンスが返されることを確認
+    assert first is second
+    # キャッシュに保存されていることを確認
+    assert model_name in _MODEL_INSTANCE_REGISTRY
+    assert _MODEL_INSTANCE_REGISTRY[model_name] is first

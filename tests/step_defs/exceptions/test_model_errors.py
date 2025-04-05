@@ -1,6 +1,6 @@
 import pytest
 
-from scorer_wrapper_lib.exceptions.model_errors import (
+from image_annotator_lib.exceptions.errors import (
     InvalidInputError,
     InvalidModelConfigError,
     InvalidOutputError,

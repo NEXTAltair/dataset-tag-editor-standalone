@@ -4,11 +4,8 @@ from typing import Any
 import pytest
 from pytest_bdd import given, parsers, then, when, scenarios
 
-from scorer_wrapper_lib.score_models.aesthetic_shadow import (
-    AestheticShadowV1,
-    AestheticShadowV2,
-)
-from scorer_wrapper_lib.score_models.cafe_aesthetic import CafePredictor
+from image_annotator_lib.models.pipeline_scorers import AestheticShadow
+from image_annotator_lib.models.pipeline_scorers import CafePredictor
 
 scenarios("../../features/score_models/aesthetic_score_models.feature")
 
@@ -41,12 +38,10 @@ def model_context() -> dict[str, Any]:
 # Aesthetic Shadow V1 モデルのステップ
 @given('"shadowlilac/aesthetic-shadow" モデルが利用可能である')
 def aesthetic_shadow_v1_model(model_context: dict[str, Any]) -> None:
-    with mock.patch("scorer_wrapper_lib.core.base.BaseScorer._load_model"):
-        model = AestheticShadowV1("aesthetic_shadow_v1")
+    with mock.patch("image_annotator_lib.core.model_factory.ModelLoad.load_transformers_components"):
+        model = AestheticShadow("aesthetic_shadow_v1")
         model._pipeline = mock.MagicMock()
-        model._pipeline.return_value = model_context["output_formats"][
-            "aesthetic_shadow"
-        ]
+        model._pipeline.return_value = model_context["output_formats"]["aesthetic_shadow"]
         model_context["model"] = model
         model_context["model_type"] = "pipeline"
         assert model is not None
@@ -55,12 +50,10 @@ def aesthetic_shadow_v1_model(model_context: dict[str, Any]) -> None:
 # Aesthetic Shadow V2 モデルのステップ
 @given('"NEXTAltair/cache_aestheic-shadow-v2" モデルが利用可能である')
 def aesthetic_shadow_v2_model(model_context: dict[str, Any]) -> None:
-    with mock.patch("scorer_wrapper_lib.core.base.BaseScorer._load_model"):
-        model = AestheticShadowV2("aesthetic_shadow_v2")
+    with mock.patch("image_annotator_lib.core.model_factory.ModelLoad.load_transformers_components"):
+        model = AestheticShadow("aesthetic_shadow_v2")
         model._pipeline = mock.MagicMock()
-        model._pipeline.return_value = model_context["output_formats"][
-            "aesthetic_shadow"
-        ]
+        model._pipeline.return_value = model_context["output_formats"]["aesthetic_shadow"]
         model_context["model"] = model
         model_context["model_type"] = "pipeline"
         assert model is not None
@@ -69,7 +62,7 @@ def aesthetic_shadow_v2_model(model_context: dict[str, Any]) -> None:
 # CAFE Aesthetic モデルのステップ
 @given('"cafeai/cafe_aesthetic" モデルが利用可能である')
 def cafe_aesthetic_model(model_context: dict[str, Any]) -> None:
-    with mock.patch("scorer_wrapper_lib.core.base.BaseScorer._load_model"):
+    with mock.patch("image_annotator_lib.core.model_factory.ModelLoad.load_transformers_components"):
         model = CafePredictor("cafe_aesthetic")
         model.config = {"score_prefix": "[CAFE]"}
         model._evaluate = mock.MagicMock()
@@ -82,8 +75,8 @@ def cafe_aesthetic_model(model_context: dict[str, Any]) -> None:
 # Aesthetic Shadow モデル初期化ステップ
 @given("Aesthetic Shadow モデルが初期化されている")
 def aesthetic_shadow_model_init(model_context: dict[str, Any]) -> None:
-    with mock.patch("scorer_wrapper_lib.core.base.BaseScorer._load_model"):
-        model = AestheticShadowV1("aesthetic_shadow_v1")
+    with mock.patch("image_annotator_lib.core.model_factory.ModelLoad.load_transformers_components"):
+        model = AestheticShadow("aesthetic_shadow_v1")
         model_context["model"] = model
         model_context["model_type"] = "pipeline"
         assert model is not None

@@ -4,7 +4,7 @@ import pytest
 import torch
 from PIL import Image
 
-from scorer_wrapper_lib.exceptions.model_errors import (
+from image_annotator_lib.exceptions.errors import (
     InvalidInputError,
     InvalidModelConfigError,
     InvalidOutputError,
@@ -13,8 +13,7 @@ from scorer_wrapper_lib.exceptions.model_errors import (
     ModelNotFoundError,
     UnsupportedModelError,
 )
-from scorer_wrapper_lib.score_models.imagereward import ImageRewardScorer
-from scorer_wrapper_lib.scorer import evaluate
+from image_annotator_lib.api import annotate
 
 
 class TestErrorHandling:
@@ -26,9 +25,7 @@ class TestErrorHandling:
             # 非画像データを渡す
             invalid_image = "これは画像ではなく文字列です"
             model = MagicMock()
-            model.predict.side_effect = TypeError(
-                "入力は PIL.Image オブジェクトである必要があります"
-            )
+            model.predict.side_effect = TypeError("入力は PIL.Image オブジェクトである必要があります")
             model.predict([invalid_image])
 
     def test_model_load_error(self) -> None:
@@ -36,19 +33,13 @@ class TestErrorHandling:
         with pytest.raises(ModelLoadError):
             with (
                 patch(
-                    "scorer_wrapper_lib.score_models.imagereward.ImageRewardScorer._load_model"
+                    "image_annotator_lib.score_models.imagereward.ImageRewardScorer._load_model"
                 ) as mock_load,
-                patch(
-                    "scorer_wrapper_lib.core.base.load_model_config"
-                ) as mock_base_config,
-                patch(
-                    "scorer_wrapper_lib.score_models.imagereward.load_model_config"
-                ) as mock_ir_config,
+                patch("image_annotator_lib.core.base.load_model_config") as mock_base_config,
+                patch("image_annotator_lib.score_models.imagereward.load_model_config") as mock_ir_config,
             ):
                 # 両方のモックに同じ設定を提供
-                mock_config = {
-                    "test_model": {"class": "ImageRewardScorer", "device": "cpu"}
-                }
+                mock_config = {"test_model": {"class": "ImageRewardScorer", "device": "cpu"}}
                 mock_base_config.return_value = mock_config
                 mock_ir_config.return_value = mock_config
 
@@ -56,10 +47,9 @@ class TestErrorHandling:
                 mock_load.side_effect = ModelLoadError("モデルファイルが見つかりません")
 
                 # モデル初期化
-                model = ImageRewardScorer("test_model")
                 model._load_model()
 
-    @patch("scorer_wrapper_lib.scorer._evaluate_model")
+    @patch("image_annotator_lib.scorer._evaluate_model")
     def test_model_execution_error(self, mock_evaluate: MagicMock) -> None:
         """推論実行中のエラー処理のテスト"""
         # 内部エラーをシミュレート
@@ -72,8 +62,8 @@ class TestErrorHandling:
         mock_scorer = MagicMock()
 
         with (
-            patch("scorer_wrapper_lib.scorer.init_scorer") as mock_init_scorer,
-            patch("scorer_wrapper_lib.scorer.ModelExecutionError") as mock_error_class,
+            patch("image_annotator_lib.scorer.init_scorer") as mock_init_scorer,
+            patch("image_annotator_lib.scorer.ModelExecutionError") as mock_error_class,
         ):
             mock_init_scorer.return_value = mock_scorer
             # RuntimeErrorをModelExecutionErrorにラップするように設定
@@ -81,7 +71,7 @@ class TestErrorHandling:
 
             with pytest.raises(ModelExecutionError):
                 # evaluate関数を呼び出す
-                evaluate([test_image], ["test_model"])
+                annotate([test_image], ["test_model"])
 
     @pytest.mark.parametrize(
         "exception_class",
@@ -129,30 +119,24 @@ class TestErrorHandling:
         """処理タイムアウトの処理テスト"""
         # タイムアウトエラーをシミュレート
         with patch(
-            "scorer_wrapper_lib.scorer.init_scorer",
+            "image_annotator_lib.scorer.init_scorer",
             side_effect=TimeoutError("処理がタイムアウトしました"),
         ):
             with pytest.raises(TimeoutError):
-                get_scorer_instance("test_model")
+                get_annotator_instance("test_model")
 
-    @patch("scorer_wrapper_lib.score_models.imagereward.create_blip_image_reward_model")
+    @patch("image_annotator_lib.score_models.imagereward.create_blip_image_reward_model")
     def test_gpu_dependency_error(self, mock_create_model: MagicMock) -> None:
         """GPU環境依存エラーの処理テスト"""
         # GPUエラーをシミュレート
-        mock_create_model.side_effect = RuntimeError(
-            "CUDA error: no CUDA-capable device is detected"
-        )
+        mock_create_model.side_effect = RuntimeError("CUDA error: no CUDA-capable device is detected")
 
         with (
-            patch("scorer_wrapper_lib.core.base.load_model_config") as mock_base_config,
-            patch(
-                "scorer_wrapper_lib.score_models.imagereward.load_model_config"
-            ) as mock_ir_config,
+            patch("image_annotator_lib.core.base.load_model_config") as mock_base_config,
+            patch("image_annotator_lib.score_models.imagereward.load_model_config") as mock_ir_config,
         ):
             # 両方のモックに同じ設定を提供
-            mock_config = {
-                "test_model": {"class": "ImageRewardScorer", "device": "cuda"}
-            }
+            mock_config = {"test_model": {"class": "ImageRewardScorer", "device": "cuda"}}
             mock_base_config.return_value = mock_config
             mock_ir_config.return_value = mock_config
 

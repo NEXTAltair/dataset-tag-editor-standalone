@@ -15,16 +15,16 @@ import torch
 from PIL import Image
 from pytest_bdd import given, scenarios, then, when
 
-from tagger_wrapper_lib.registry import (
+from image_annotator_lib.core.registry import (
     ModelClass,
     get_cls_obj_registry,
-    list_available_taggers,
-)  # type: ignore
-from tagger_wrapper_lib.tagger import (
+    list_available_annotators,
+)
+from image_annotator_lib.api import (
     _MODEL_INSTANCE_REGISTRY,
-    evaluate,
-    get_tagger_instance,
-)  # type: ignore
+    annotate,
+    get_annotator_instance,
+)
 
 scenarios("../features/tagger.feature")
 
@@ -54,7 +54,7 @@ def given_initialize_tagger_library() -> dict[str, ModelClass]:
 
 @given("レジストリに登録されたモデルのリストを取得する", target_fixture="available_models")
 def given_get_available_models() -> list[str]:
-    return list_available_taggers()
+    return list_available_annotators()
 
 
 @given("インスタンス化済みのモデルクラスが存在する", target_fixture="instantiated_models")
@@ -62,7 +62,7 @@ def given_instantiated_models(tagger_registry: dict[str, ModelClass]) -> dict[st
     instantiated = {}
     # tagger_registryからモデル名を取得してインスタンス化
     for model_name in tagger_registry.keys():
-        instantiated[model_name] = get_tagger_instance(model_name)
+        instantiated[model_name] = get_annotator_instance(model_name)
     return instantiated  # _MODEL_INSTANCE_REGISTRY と中身同じ
 
 
@@ -117,7 +117,7 @@ def given_all_models(tagger_registry) -> list[str]:
 def when_instantiate_all_models(available_models: list[str]) -> dict[str, Any]:
     instantiated = {}
     for model_name in available_models:
-        instantiated[model_name] = get_tagger_instance(model_name)
+        instantiated[model_name] = get_annotator_instance(model_name)
     return instantiated
 
 
@@ -130,7 +130,7 @@ def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
     original_instance = instantiated_models[model_name]
 
     # get_tagger_instanceを使ってキャッシュから取得（_create_tagger_instanceではない）
-    reused_instance = get_tagger_instance(model_name)
+    reused_instance = get_annotator_instance(model_name)
 
     # 比較のために必要な情報を返す
     return {
@@ -145,7 +145,7 @@ def when_tag_image(
     valid_image: list[Image.Image], model_for_tagging: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで評価する
-    return evaluate(valid_image, model_for_tagging)
+    return annotate(valid_image, model_for_tagging)
 
 
 @when("これらの画像を一括アノテーションを実行", target_fixture="tagging_results")
@@ -153,7 +153,7 @@ def when_tag_images(
     valid_images: list[Image.Image], model_for_tagging: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
-    return evaluate(valid_images, model_for_tagging)
+    return annotate(valid_images, model_for_tagging)
 
 
 @when("この画像を複数のモデルでアノテーションを実行", target_fixture="tagging_results")
@@ -161,7 +161,7 @@ def when_tag_image_multiple_models(
     valid_image: list[Image.Image], multiple_models: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
-    return evaluate(valid_image, multiple_models)
+    return annotate(valid_image, multiple_models)
 
 
 @when("これらの画像を複数のモデルで一括アノテーションを実行", target_fixture="tagging_results")
@@ -169,11 +169,11 @@ def when_tag_images_multiple_models(
     valid_images: list[Image.Image], multiple_models: list[str]
 ) -> dict[str, list[dict[str, Any]]]:
     # 単一のモデルで複数画像を評価する
-    return evaluate(valid_images, multiple_models)
+    return annotate(valid_images, multiple_models)
 
 
 @when("これらの画像を複数回連続でアノテーションを実行", target_fixture="test_results")
-def when_evaluate_images_repeatedly(valid_images_large: list[Image.Image], all_models: list[str]) -> dict:
+def when_annotate_images_repeatedly(valid_images_large: list[Image.Image], all_models: list[str]) -> dict:
     results = []
     memory_usage = []  # CPUメモリ
     gpu_memory_usage = []  # VRAM
@@ -185,7 +185,7 @@ def when_evaluate_images_repeatedly(valid_images_large: list[Image.Image], all_m
         round_start = time.time()
 
         # 評価実行
-        round_results = evaluate(valid_images_large, all_models)
+        round_results = annotate(valid_images_large, all_models)
         results.append(round_results)
 
         # CPUメモリ記録
@@ -237,7 +237,7 @@ def when_switch_models_repeatedly(valid_image: list[Image.Image], all_models: li
                 reserved = torch.cuda.memory_reserved() / 1024 / 1024
                 gpu_memory_usage.append({"allocated": allocated, "reserved": reserved})
         # 単一モデルで評価
-        result = evaluate(valid_image, [model_name])
+        result = annotate(valid_image, [model_name])
         results.append(result)
 
     total_time = time.time() - start_time

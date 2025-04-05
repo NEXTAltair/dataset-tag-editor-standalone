@@ -5,11 +5,11 @@
 
 from pytest_bdd import given, scenarios, then, when
 
-from scorer_wrapper_lib.core.utils import load_model_config  # type: ignore
-from scorer_wrapper_lib.scorer_registry import (  # type: ignore
+from image_annotator_lib.core.utils import load_model_config  # type: ignore
+from image_annotator_lib.core.registry import (  # type: ignore
     get_cls_obj_registry,
-    list_available_scorers,
-    register_scorers,
+    list_available_annotators,
+    register_annotators,
 )
 
 scenarios("../features/registry.feature")
@@ -26,23 +26,23 @@ def given_scorer_config_exists():
 )
 def given_module_directory_exists():
     # 統合テストパッケージとしてインストールした
-    # scorer_wrapper_lib/score_modelsディレクトリが存在していることを前提とする
+    # image_annotator_lib/score_modelsディレクトリが存在していることを前提とする
     return "score_models"
 
 
 @given("モデルレジストリが構築されている", target_fixture="test_registry")
 def given_model_registry_built():
-    return register_scorers()
+    return register_annotators()
 
 
 @when("モデルクラスオブジェクトレジストリを構築する", target_fixture="test_registry")
 def whem_model_registry_built():
-    return register_scorers()
+    return register_annotators()
 
 
 @when("利用可能なモデル名のリストを取得する", target_fixture="test_model_name_list")
 def when_available_model_names_list_obtained():
-    return list_available_scorers()
+    return list_available_annotators()
 
 
 @when("レジストリから特定のモデルを取得する", target_fixture="test_specific_model")
