@@ -1,0 +1,97 @@
+---
+description: 
+globs: image-annotator-lib/**/*.py
+alwaysApply: false
+---
+---
+description: "image-annotator-lib リファクタリングに関するルールとガイドライン"
+globs: "image-annotator-lib/**/*.py"
+version: "1.0.0"
+---
+
+# image-annotator-lib リファクタリングルール
+
+## 元の実装の定義と参照ソースコード
+
+「元の実装」とは、以下のライブラリの該当するコードを指します：
+
+1. **tagger-wrapper-lib**: タグ付け機能の元の実装
+   - 主要ファイル: `tagger-wrapper-lib/src/tagger_wrapper_lib/core/base.py`
+   - BaseTagger および関連クラスの実装
+   - メソッド: `_preprocess_image()`, `_run_inference()`, `_format_predictions()`, `_generate_tags()`
+
+2. **scorer-wrapper-lib**: スコアリング機能の元の実装
+   - 主要ファイル: `scorer-wrapper-lib/src/scorer_wrapper_lib/core/base.py`
+   - BaseScorer および関連クラスの実装
+   - メソッド: `predict()`, `_calculate_score()`, `_get_score_tag()`
+
+## メソッド名対応表
+
+| 新実装 (image-annotator-lib) | tagger-wrapper-lib | scorer-wrapper-lib | 注記 |
+|---------------------------|-------------------|-------------------|------|
+| `_preprocess_images_batch()` | `_preprocess_image()` | - | バッチ処理を明示する命名に統一 |
+| `_run_inference_batch()` | `_run_inference()` | - | バッチ処理を明示する命名に統一 |
+| `_format_predictions_batch()` | `_format_predictions()` | - | バッチ処理を明示する命名に統一 |
+| `_generate_annotations_batch()` | `_generate_tags()` | - | より汎用的な命名に変更 |
+| `_calculate_score()` | - | `_calculate_score()` | scorer_wrapper_lib と同名を維持 |
+| `_get_score_tag()` | - | `_get_score_tag()` | scorer_wrapper_lib と同名を維持 |
+
+## 実装の優先順位と判断基準
+
+実装が競合する場合、以下の優先順位で判断します：
+
+1. **共通処理の粒度**: より細かい粒度で共通処理を抽出できる実装を優先
+2. **バッチ処理の統一性**: バッチ処理をより効率的に行える実装を優先
+3. **エラーハンドリングの堅牢性**: より包括的なエラーハンドリングを持つ実装を優先
+4. **命名の一貫性**: より明確で一貫性のある命名規則を持つ実装を優先
+
+tagger-wrapper-lib と scorer-wrapper-lib の実装が競合する場合：
+- より新しい tagger-wrapper-lib の設計を基本とする
+- ただし、scorer-wrapper-lib 固有の機能（スコア計算など）はその実装を優先
+
+## 責任範囲の区分け
+
+### BaseAnnotator（最上位抽象クラス）の責任
+- 共通属性の初期化 (`model_name`, `device` など)
+- 共通メソッド `predict()` の実装（チャンク処理、エラーハンドリングを含む）
+- 抽象メソッドの宣言
+
+### フレームワーク別基底クラスの責任
+- フレームワーク固有の `__enter__()`, `__exit__()` の実装
+- フレームワーク固有の前処理・推論・後処理のデフォルト実装
+- フレームワーク共通のユーティリティメソッド
+
+### 具象モデルクラスの責任
+- モデル固有の初期化と設定
+- モデル固有のタグ/ラベルのロード
+- 必要に応じたフレームワーク基底クラスのメソッドのオーバーライド
+
+## オーバーライドルール
+
+以下のメソッドは各レベルでのオーバーライド方針を示します：
+
+### オーバーライド禁止（共通実装を使用）
+- `BaseAnnotator.predict()`：共通のチャンク処理・エラーハンドリングを維持
+- `BaseAnnotator._generate_base_result()`：標準的な結果構造を維持
+
+### オーバーライド可能（フレームワークレベルで）
+- `BaseAnnotator.__enter__()`、`BaseAnnotator.__exit__()`：フレームワーク固有の実装
+- `BaseAnnotator._preprocess_images_batch()`：フレームワーク固有の前処理
+- `BaseAnnotator._run_inference_batch()`：フレームワーク固有の推論実行
+- `BaseAnnotator._format_predictions_batch()`：フレームワーク固有のフォーマット
+
+### オーバーライド可能（モデルレベルで）
+- フレームワーク基底クラスのデフォルト実装
+- モデル固有のタグ生成・スコア計算ロジック
+
+## コーディングパターン
+
+### エラーハンドリング
+- OutOfMemoryError は特別扱い：キャッチしてログ出力後、再スロー
+- モデルロード/初期化エラーは明確なメッセージとともにキャッチ＆スロー
+- 予期せぬエラーはログに詳細を記録し、シンプルなメッセージでラップ
+
+### 型ヒント
+- TypedDict を使用して複雑な戻り値型を定義
+- Self 型を使用してメソッドチェーン対応
+- Any 型の使用は最小限に抑え、具体的な型を指定 

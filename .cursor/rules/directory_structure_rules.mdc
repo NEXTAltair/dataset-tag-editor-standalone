@@ -1,0 +1,309 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: "プロジェクトのディレクトリ構造に関するルール / Rules for the project directory structure"
+globs:
+version: "2.1.0"
+---
+
+# ディレクトリ構成ルール
+
+## プロジェクトのルートディレクトリ
+
+- プロジェクトのルートディレクトリには、以下のファイルとフォルダを含めること。
+  - `requirements.txt`: 必要なライブラリをリストするファイル。
+  - `pyproject.toml`: サブプロジェクトの共通設定
+  - `README.md`: プロジェクトの概要と使用方法を説明するファイル。
+  - `tests/`: テストコードを格納するディレクトリ。
+
+## ソースコードディレクトリ (`scripts/`)
+
+- 各モジュールは、機能ごとにサブディレクトリに分けること。
+
+## テストディレクトリ (`tests/`)
+
+- テストコードは `tests/` ディレクトリ内に配置すること。
+- 各テストは、対応するソースコードのモジュールに基づいてサブディレクトリに分けること。
+- テストファイルは、対応するモジュール名に `test_` プレフィックスを付けること。
+
+## その他
+
+- ディレクトリ構成は、プロジェクトの拡張性と可読性を考慮して設計すること。
+
+## 現在のプロジェクト構成
+
+- メインプロジェクトとサブプロジェクト `scorer-wrapper-lib` と `tagger-wrapper-lib` の関係:
+  - メインプロジェクトから一部機能を切り出したのが `scorer-wrapper-lib` と `tagger-wrapper-lib` であり、このディレクトリ一つで独立したプロジェクトとしても機能します。
+  - `scorer-wrapper-lib` と `tagger-wrapper-lib` はメインプロジェクトとは異なり、プロジェクトの依存関係などは `pyproject.toml` を使用して管理されます。
+
+```
+.
+.
+├── .cursor/
+├── .github/
+├── .gitignore
+├── .gitattributes
+├── .vscode/
+├── .env
+├── LICENSE
+├── README-JP.md
+├── README.md
+├── Documentation.md
+├── install.bat
+├── launch_user.bat
+├── requirements.txt
+├── version.txt
+├── webui.sh
+├── example_lib.py
+├── processor_return_check.py
+├── config/
+├── css/
+│   └── style.css
+├── docs/
+├── javascript/
+│   ├── 00_init.js
+│   ├── 90_ui.js
+│   └── 99_main.js
+├── models/
+├── pic/
+│   ├── ss01.png
+│   ├── ss07.png
+│   ├── ss08.png
+│   ├── ss09.png
+│   ├── ss10.png
+│   ├── ss11.png
+│   ├── ss12.png
+│   └── ss13.png
+├── results/
+├── scorer-wrapper-lib/
+│   ├── example.py
+│   ├── pyproject.toml
+│   ├── README.md
+│   ├── config/
+│   │   ├── models.json
+│   │   └── models.toml
+│   ├── docs/
+│   │   ├── Documentation_Scorer_Wrapper.md
+│   │   ├── pytest-bdd.md
+│   │   ├── RooCode.md
+│   │   ├── スコアラー.md
+│   │   └── ロガー.md
+│   ├── src/
+│   │   └── scorer_wrapper_lib/
+│   │       ├── __init__.py
+│   │       ├── scorer_registry.py
+│   │       ├── scorer.py
+│   │       ├── core/
+│   │       │   ├── __init__.py
+│   │       │   ├── base.py
+│   │       │   ├── model_factory.py
+│   │       │   └── utils.py
+│   │       ├── exceptions/
+│   │       │   ├── __init__.py
+│   │       │   └── model_errors.py
+│   │       └── score_models/
+│   │           ├── __init__.py
+│   │           ├── aesthetic_shadow.py
+│   │           ├── cafe_aesthetic.py
+│   │           └── imagereward.py
+│   └── tests/
+│       ├── __init__.py
+│       ├── conftest.py
+│       ├── test_cache_handling.py
+│       ├── test_exceptions.py
+│       ├── test_image_scoring.py
+│       ├── test_imagereward.py
+│       ├── test_init_lib.py
+│       ├── test_utils.py
+│       ├── features/
+│       │   ├── cache_handling.feature
+│       │   ├── error_handling.feature
+│       │   ├── exceptions.feature
+│       │   ├── image_scoring.feature
+│       │   ├── imagereward.feature
+│       │   ├── init_lib.feature
+│       │   ├── model_loading.feature
+│       │   └── utils.feature
+│       ├── resources/
+│       │   └── img/
+│       │       └── 1_img/
+│       │           ├── file01.webp
+│       │           ├── file02.webp
+│       │           ├── file03.webp
+│       │           ├── file04.webp
+│       │           ├── file05.webp
+│       │           ├── file06.webp
+│       │           ├── file07.webp
+│       │           ├── file08.webp
+│       │           └── file09.webp
+│       └── steps/
+│           ├── test_exceptions_steps.py
+│           ├── test_imagereward_steps.py
+│           ├── test_model_loading_steps.py
+│           └── test_utils_steps.py
+├── scripts/
+│   ├── cmd_args.py
+│   ├── config.py
+│   ├── devices.py
+│   ├── dte_instance.py
+│   ├── interface.py
+│   ├── launch.bat
+│   ├── launch.py
+│   ├── logger.py
+│   ├── model_loader.py
+│   ├── paths.py
+│   ├── settings.py
+│   ├── shared_state.py
+│   ├── singleton.py
+│   ├── tab_main.py
+│   ├── tab_settings.py
+│   ├── tagger.py
+│   ├── utilities.py
+│   ├── dataset_tag_editor/
+│   │   ├── __init__.py
+│   │   ├── custom_scripts.py
+│   │   ├── dataset.py
+│   │   ├── dte_logic.py
+│   │   ├── filters.py
+│   │   ├── interrigator_names.py
+│   │   ├── kohya_finetune_metadata.py
+│   │   ├── taggers_builtin.py
+│   │   └── interrogators/
+│   │       ├── __init__.py
+│   │       ├── blip_large_captioning.py
+│   │       ├── blip2_captioning.py
+│   │       ├── deep_danbooru_tagger.py
+│   │       ├── deepbooru_model.py
+│   │       ├── git_large_captioning.py
+│   │       ├── waifu_diffusion_tagger_timm.py
+│   │       └── waifu_diffusion_tagger.py
+│   ├── tokenizer/
+│   │   ├── __init__.py
+│   │   └── clip_tokenizer.py
+│   └── ui/
+│       ├── __init__.py
+│       ├── block_blip_settings.py
+│       ├── block_dataset_gallery.py
+│       ├── block_gallery_state.py
+│       ├── block_load_dataset.py
+│       ├── block_tag_filter.py
+│       ├── block_tag_select.py
+│       ├── block_toprow.py
+│       ├── tab_batch_edit_captions.py
+│       ├── tab_edit_caption_of_selected_image.py
+│       ├── tab_filter_by_selection.py
+│       ├── tab_filter_by_tags.py
+│       ├── tab_move_or_delete_files.py
+│       ├── ui_classes.py
+│       ├── ui_common.py
+│       ├── ui_instance.py
+│       └── uibase.py
+├── stable-diffusion-webui-wd14-tagger/
+├── DeepDanbooru/
+├── tagger-wrapper-lib/
+│   ├── example.py
+│   ├── pyproject.toml
+│   ├── README.md
+│   ├── config/
+│   │   ├── models.json
+│   │   └── models.toml
+│   ├── docs/
+│   │   ├── Documentation_Tagger_Wrapper.md
+│   │   ├── pytest-bdd.md
+│   │   ├── RooCode.md
+│   │   ├── タガー.md
+│   │   └── ロガー.md
+│   ├── src/
+│   │   └── tagger_wrapper_lib/
+│   │       ├── __init__.py
+│   │       ├── tagger_registry.py
+│   │       ├── tagger.py
+│   │       ├── core/
+│   │       │   ├── __init__.py
+│   │       │   ├── base.py
+│   │       │   ├── model_factory.py
+│   │       │   └── utils.py
+│   │       ├── exceptions/
+│   │       │   ├── __init__.py
+│   │       │   └── model_errors.py
+│   │       └── tag_models/
+│   │           ├── __init__.py
+│   │           ├── blip_large_captioning.py
+│   │           ├── blip2_captioning.py
+│   │           ├── deep_danbooru_tagger.py
+│   │           ├── git_large_captioning.py
+│   │           └── waifu_diffusion_tagger.py
+│   └── tests/
+│       ├── __init__.py
+│       ├── conftest.py
+│       ├── test_cache_handling.py
+│       ├── test_exceptions.py
+│       ├── test_image_tagging.py
+│       ├── test_init_lib.py
+│       ├── test_utils.py
+│       ├── features/
+│       │   ├── cache_handling.feature
+│       │   ├── error_handling.feature
+│       │   ├── exceptions.feature
+│       │   ├── image_tagging.feature
+│       │   ├── init_lib.feature
+│       │   ├── model_loading.feature
+│       │   └── utils.feature
+│       ├── resources/
+│       │   └── img/
+│       │       └── 1_img/
+│       │           ├── file01.webp
+│       │           ├── file02.webp
+│       │           ├── file03.webp
+│       │           ├── file04.webp
+│       │           ├── file05.webp
+│       │           ├── file06.webp
+│       │           ├── file07.webp
+│       │           ├── file08.webp
+│       │           └── file09.webp
+│       └── steps/
+│           ├── test_exceptions_steps.py
+│           ├── test_image_tagging_steps.py
+│           ├── test_model_loading_steps.py
+│           └── test_utils_steps.py
+├── tests/
+│   ├── features/
+│   │   ├── cache_handling.feature
+│   │   ├── error_handling.feature
+│   │   ├── image_scoring.feature
+│   │   └── init_lib.feature
+│   └── resources/
+│       └── img/
+│           └── 1_img/
+│               ├── file01.webp
+│               ├── file02.webp
+│               ├── file03.webp
+│               ├── file04.webp
+│               ├── file05.webp
+│               ├── file06.webp
+│               ├── file07.webp
+│               ├── file08.webp
+│               └── file09.webp
+└── userscripts/
+    └── taggers/
+        ├── aesthetic_shadow_v1.py
+        ├── aesthetic_shadow.py
+        ├── cafeai_aesthetic_classifier.py
+        ├── improved_aesthetic_predictor.py
+        └── waifu_aesthetic_classifier.py
+```
+
+# Directory Structure Rules
+
+This document defines the rules for the directory structure of the project. Please follow these rules strictly to maintain consistency and readability.
+
+## Basic Rules
+
+- Directory names should be concise and descriptive.
+- Use lowercase letters and underscores (`_`) for directory names.
+- Avoid using spaces or special characters in directory names.
+
+## Directory Structure Example

@@ -1,0 +1,203 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: "Coding rules and development environment setup for Python projects"
+globs: image-annotator-lib, scorer-wrapper-lib, tagger-wrapper-lib
+version: "2.3.0"
+---
+```markdown
+# コーディングルール
+
+## 開発環境
+
+- Windows 11を開発環境として使用する
+- Python 3.12を使用する
+
+## サブプロジェクト: scorer-wrapper-lib､tagger-wrapper-lib
+
+- 画像評価と関連処理のライブラリとして機能
+- `pyproject.toml`で管理され、`pip install -e .[dev]`コマンドでインストール可能
+- コーディングはサブプロジェクトのdocsディレクトリのドキュメントを参照
+- 処理システムの変更時はドキュメントを更新する
+
+## コーディングスタイル
+
+- PEP 8ガイドラインに従う
+- 意味のある変数名と関数名を使用する
+- 単一責任の原則（SRP）を遵守
+- 新しいPythonバージョンの組み込み型ヒントを使用（例：`dict`, `list`）
+- パス処理には`import os`のは使わず`import pathlib`を使用
+- Ruffをコードフォーマッタとして使用
+- 可読性の高いコードを維持
+- リスト内包表記では`if`と`for`の使用を1つに制限
+
+## 責任分離の原則
+
+### 基本方針
+- 各クラスは単一の責任を持つ
+- 他クラスの内部実装への依存を禁止
+- 状態管理は専用クラスに委譲
+
+### 実装例
+```python
+# Good: 責任が分離されている
+class ModelLoad:
+    """メモリと状態管理のみを担当"""
+    def cache_to_main_memory(self, model_name: str, components: dict) -> dict:
+        return self._perform_caching(model_name, components)
+
+class BaseAnnotator:
+    """モデルの使用のみを担当"""
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.components = ModelLoad.cache_to_main_memory(
+            self.model_name, self.components
+        )
+
+# Bad: 責任が混在している
+class BaseAnnotator:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self._check_model_state() == "on_gpu":  # 状態管理に依存
+            self._cache_model()
+```
+
+### チェックリスト
+- [ ] クラスの責任が単一か
+- [ ] 他クラスの内部実装に依存していないか
+- [ ] 状態管理は適切に委譲されているか
+
+## ドキュメンテーション
+
+- 各関数にdocstringを追加（引数と戻り値の説明を含む）
+- 各モジュールの冒頭に目的を説明するコメントを追加
+- コード変更時は適切にドキュメントを更新
+- 実装の意図を説明する簡潔で明確な日本語コメントを記述
+- .cursor/rulesディレクトリのドキュメント更新時は日本語､英語版を同時に更新
+- コードコメントアノテーションには標準的なTodo Tree拡張タグを使用:
+  - `TODO`: 将来実装予定の機能や改善点
+  - `FIXME`: 修正が必要な既知の問題
+  - `BUG`: 確認済みのバグ
+  - `HACK`: 一時的な回避策や最適でない実装
+  - `XXX`: 特別な注意や再考が必要な箇所
+  - `[ ]`: 未完了のタスク
+  - `[x]`: 完了したタスク
+
+## テスト
+
+- 各機能にテストを書き、十分なテストカバレッジを確保
+- テストは明確で再現可能であること
+- BDDテストはユーザーの行動に基づいて設計し、自然言語による記述を重視
+- pytest-bddを使用したBDDテストのガイドライン:
+  - 'features'ディレクトリに.featureファイルを作成し、Given-When-Then形式で機能を明確に記述
+  - 'step_defs'モジュールにfeatureファイルに対応するステップ定義を実装
+  - 類似のケースを複数テストする場合はシナリオアウトラインを使用
+  - featureファイルはビジネス要件に焦点を当て、実装の詳細は含めない
+  - 必要に応じてBDDシナリオ専用のフィクスチャを整理
+  - featureステップとステップ定義関数の命名規則を一貫させる
+  - すべてのシナリオをエンドユーザーの視点から詳細に文書化
+
+## その他
+
+- コード変更履歴を適切に管理し、明確なコミットメッセージを書く
+- ファイルの追加・削除時は`directory_structure_rules`ツリーを更新
+- 複数の実装案がある場合、コード変更を1つずつ適用してテストし、最適な実装を見つける
+
+# Coding Rules
+
+## Development Environment
+
+- Use Windows 11 as the development environment
+- Use Python version 3.12
+- List required libraries in `requirements.txt` at the project root and install them during environment setup
+
+## Subproject: scorer-wrapper-lib
+
+- Functions as a library for image evaluation and related processing
+- Managed in `pyproject.toml`, can be installed using the `pip install -e .[dev]` command
+- For coding, refer to the documentation in the subproject's docs directory
+- Update documentation when changes are made to the processing system
+
+## Coding Style
+
+- Follow PEP 8 coding style guidelines
+- Use meaningful names for variables and functions
+- Adhere to the Single Responsibility Principle (SRP)
+- Use built-in Python type hints introduced in newer versions (e.g., `dict`, `list`)
+- Use `import pathlib` instead of `import os` for path handling
+- Use Ruff as the code formatter
+- Maintain readable code
+- Limit the use of `if` and `for` to one when using list comprehensions
+
+## Principle of Separation of Responsibilities
+
+### Basic Policy
+- Each class has a single responsibility
+- Dependencies on internal implementations of other classes are prohibited
+- State management is delegated to dedicated classes
+
+### Implementation Example
+```python
+# Good: Responsibilities are separated
+class ModelLoad:
+    """Responsible only for memory and state management"""
+    def cache_to_main_memory(self, model_name: str, components: dict) -> dict:
+        return self._perform_caching(model_name, components)
+
+class BaseAnnotator:
+    """Responsible only for model usage"""
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.components = ModelLoad.cache_to_main_memory(
+            self.model_name, self.components
+        )
+
+# Bad: Responsibilities are mixed
+class BaseAnnotator:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if self._check_model_state() == "on_gpu":  # Depends on state management
+            self._cache_model()
+```
+
+### Checklist
+- [ ] Is the class's responsibility singular?
+- [ ] Is it independent of other classes' internal implementations?
+- [ ] Is state management appropriately delegated?
+
+## Documentation
+
+- Add docstrings to each function, including descriptions of arguments and return values
+- Add a comment at the beginning of each module explaining its purpose
+- Update documentation appropriately when code changes
+- Write concise and clear comments explaining the intent behind the implementation
+- When updating documents in the .cursor/rules directory, update both the Japanese (_\_ja.mdc) and English (_.mdc) versions simultaneously
+- Use standard Todo Tree extension tags for code comment annotations:
+  - `TODO`: Features or improvements to be implemented in the future
+  - `FIXME`: Known issues that need to be fixed
+  - `BUG`: Confirmed bugs
+  - `HACK`: Temporary workarounds or suboptimal implementations
+  - `XXX`: Areas requiring special attention or reconsideration
+  - `[ ]`: Incomplete tasks
+  - `[x]`: Completed tasks
+
+## Testing
+
+- Write tests for each feature and ensure sufficient test coverage
+- Tests should be clear and reproducible
+- Design Behavior Driven Development (BDD) tests based on user behavior, emphasizing descriptions in natural language
+- Guidelines for BDD testing using pytest-bdd:
+  - Create .feature files in a 'features' directory with clear descriptions using Given-When-Then format
+  - Implement step definitions in 'step_defs' modules corresponding to feature files
+  - Use scenario outlines for testing multiple similar cases with different data
+  - Keep feature files focused on business requirements without implementation details
+  - Organize fixtures specifically for BDD scenarios when needed
+  - Maintain consistent naming conventions between feature steps and step definition functions
+  - Document all scenarios thoroughly from an end-user perspective
+
+## Others
+
+- Properly manage code change history and write clear commit messages
+- Update the `directory_structure_rules` tree when files are added or removed
+- When there are multiple implementation proposals, apply code changes one by one, test them, and find the optimal implementation
+```
+

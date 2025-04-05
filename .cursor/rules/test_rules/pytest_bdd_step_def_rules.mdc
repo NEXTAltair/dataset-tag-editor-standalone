@@ -1,0 +1,81 @@
+---
+description: 
+globs: test_*.py
+alwaysApply: false
+---
+---
+description: BDD の原則に基づくテスト実装ルール
+globs: test_*.py
+version: 2.6.4
+---
+
+# Pytest BDD ステップ定義 ルールガイドライン
+
+このガイドラインは、`pytest-bdd` を使用したステップ定義の実装に関するルールを定義する
+
+## 1. ステップ定義の基本
+
+### 1.1 パラメータ化と命名規則
+
+- **パラメータ化**: ステップ定義は積極的にパラメータ化し、異なるシナリオで同一ロジックを再利用できるようにする｡`parsers.parse` や `parsers.cfparse` を活用する｡
+- **命名規則**:
+    - 関数名は、その役割に応じて `given_`, `when_`, `then_` のプレフィックスを付与する｡これにより、ステップの目的が明確になる｡
+- **`target_fixture`**: ステップ定義が値を生成し、後続のステップで使用する必要がある場合、`target_fixture="fixture_name"` を指定してフィクスチャとして渡す｡
+
+```python
+# 例: target_fixture の使用
+from pytest_bdd import given, parsers
+
+@given(parsers.parse("有効なファイルパス {path} が存在する"), target_fixture="current_file_path")
+def given_valid_file_path(path: str) -> str:
+    ```
+    テスト対象のコードのどのメソッドやクラスのテストを行うかの説明を記載
+    ```
+    # ... (ファイル存在チェック処理) ...
+    validated_path = f"/path/to/{path}" # 仮の処理
+    # assert Path(validated_path).exists() # 実際のチェック
+    return validated_path
+```
+
+### 1.2 フィクスチャによる依存関係の管理
+
+- **pytestフィクスチャ**: テスト前のセットアップ(例: DB接続、テストデータ準備)、共通データ、クリーンアップ処理などは、pytest標準のフィクスチャ (`@pytest.fixture`) を使用して定義する｡
+- **依存関係の明示**: ステップ定義や他のフィクスチャが必要とするセットアップやデータは、引数としてフィクスチャ名を指定することで依存関係を明示的にする｡
+- **`autouse=True`**: 全てのテストで自動的に実行したいセットアップ/クリーンアップ処理(例: 一時ディレクトリ作成・削除)には `autouse=True` を指定したフィクスチャが便利
+
+```python
+# 例: フィクスチャ定義と利用
+import pytest
+from pathlib import Path
+
+@pytest.fixture
+def temp_directory(tmp_path: Path) -> Path:
+    """一時的なテストディレクトリを提供するフィクスチャ"""
+    test_dir = tmp_path / "test_run"
+    test_dir.mkdir(exist_ok=True)
+    return test_dir
+
+@given("一時ディレクトリが存在する")
+def given_temp_directory_exists(temp_directory: Path):
+    """フィクスチャを利用するステップ定義"""
+    assert temp_directory.is_dir()
+```
+
+## 2. ステップ定義の再利用と整理
+
+### 2.1 モジュール化とライブラリ化
+
+- **共通ステップの集約**: プロジェクト全体や特定の機能群で共通して使用されるステップ定義は、専用のPythonモジュール(例: `common_steps.py`, `auth_steps.py`)にまとめる｡
+- **`step_defs`**: Featureファイル内で `scenarios` 関数の引数にステップ定義モジュールを指定することで、ステップ定義をFeatureファイルに紐付ける｡
+- **責務の分離**: ステップ定義ファイルは、関連する機能やドメインごとにファイルを分割し、責務を明確に保つ｡
+
+### 2.2 適切な粒度
+
+- ステップ定義は、小さすぎず、大きすぎない適切な粒度で作成する｡
+- 一つのステップ定義が一つの具体的なアクションや検証に対応するように心がける｡
+
+## 3. 実装上の注意点
+
+- **状態の管理**: ステップ間で状態を共有する必要がある場合は、`target_fixture` や共有コンテキストオブジェクト(フィクスチャとして提供)を利用し、グローバル変数の使用は避ける｡
+- **アサーション**: `Then` ステップには明確なアサーションを含める｡`When` ステップには原則としてアサーションを含めない(アクションに集中)｡
+- **可読性**: 関数名、変数名、コメントを適切に使用し、ステップ定義のコード自体の可読性も高める

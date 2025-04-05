@@ -1,0 +1,138 @@
+---
+description: 
+globs: image-annotator-lib/**/*
+alwaysApply: false
+---
+---
+description: "image-annotator-libの設計アウトラインを記述した文書"
+globs: image-annotator-lib/*, image-annotator-lib/**/*
+version: "1.0.0"
+---
+
+# image-annotator-lib 設計アウトライン案
+
+## 1. 目的
+
+- `scorer_wrapper_lib` と `tagger_wrapper_lib` を統合し、コードの重複削減、API の統一、メンテナンス性の向上、機能拡張の容易化を図る。特に `ModelLoad` (メモリ管理) と `ModelRegistry` (クラス登録) の共通化を重視する。
+
+## 2. 統合後のライブラリ名
+
+- `image-annotator-lib`
+
+## 3. 統合後のディレクトリ構造案 (単一 models ディレクトリ)
+
+```
+image-annotator-lib/
+├── pyproject.toml
+├── README.md
+├── src/
+│   └── image_annotator_lib/
+│       ├── __init__.py
+│       ├── core/          # Tagger/Scorer共通の基盤
+│       │   ├── __init__.py
+│       │   ├── base.py      # BaseAnnotator (共通基底クラス)
+│       │   ├── registry.py  # ModelRegistry (統一モデルレジストリ)
+│       │   ├── factory.py   # ModelLoad (高機能版モデルローダー/キャッシュ管理)
+│       │   └── utils.py     # 共通ユーティリティ (設定読み込み/保存、ファイルDLなど) # <- 設定関連機能を集約
+│       ├── exceptions/    # 共通例外クラス
+│       │   ├── __init__.py
+│       │   └── errors.py    # AnnotatorError, OutOfMemoryError など
+│       ├── models/        # <- すべてのモデル実装をここに配置
+│       │   ├── __init__.py
+│       │   ├── tagger_onnx.py         # (例: WD Tagger 実装)
+│       │   ├── tagger_tensorflow.py   # (例: TF Tagger 実装)
+│       │   ├── tagger_transformers.py # (例: BLIP Tagger 実装)
+│       │   ├── scorer_aesthetic.py    # (例: Aesthetic Scorer 実装)
+│       │   ├── scorer_clip.py         # (例: CLIP Scorer 実装)
+│       │   └── scorer_classifier.py   # (例: CLIP用 Classifier ヘルパー)
+│       └── annotator.py   # 統合API (Annotatorクラス: Tagger/Scorerをラップ)
+└── examples/
+    └── example.py         # 統合後のライブラリ使用例
+```
+
+## 4. 主要な機能
+
+- 画像タギング機能 (Tagger)
+- 画像スコアリング機能 (Scorer)
+- 設定ファイル駆動のモデル選択・設定 (`core/utils.py` で管理)
+- 統一された高機能モデル管理:
+  - 動的なモデルクラス登録 (`ModelRegistry`)
+  - メモリ使用量に基づくキャッシュ管理 (LRU 解放、CPU 退避、CUDA 復元) (`ModelLoad`)
+  - メモリ不足エラーハンドリング (`ModelLoad`, `BaseAnnotator`)
+- 統一された API インターフェース (`Annotator` クラス経由)
+
+## 5. 主要なクラス/モジュール案
+
+- **`Annotator` (`annotator.py`)**: ユーザー向け API。
+- **`BaseAnnotator` (`core/base.py`)**: 共通抽象基底クラス。
+- **`ModelLoad` (`core/factory.py`)**: 高機能モデルローダー/キャッシュ管理。
+- **`ModelRegistry` (`core/registry.py`)**: 統一モデルレジストリ。`models/` ディレクトリを探索。
+- **`core/utils.py`**: 共通ユーティリティ関数群。**設定ファイルの読み込み・保存機能を含む。**
+- **各種 Tagger/Scorer 実装クラス (`models/`)**: `BaseAnnotator` を継承。ファイル名で区別 (例: `tagger_*.py`, `scorer_*.py`)。
+- **共通例外クラス (`exceptions/errors.py`)**: `AnnotatorError` など。
+
+## 6. 依存関係
+
+- `pyproject.toml` で管理。両ライブラリの依存関係を統合・整理。
+
+## 7. 移行計画
+
+- ステップ 1: 新しい `image-annotator-lib` プロジェクトとディレクトリ構造 (`models/` を含む) を作成 (`H:\Git\dataset-tag-editor-standalone-1\image-annotator-lib`)。
+- ステップ 2: `tagger_wrapper_lib` の `core/factory.py` (`ModelLoad`) を `image-annotator-lib/src/image_annotator_lib/core/factory.py` にコピーし、Scorer モデル (Pipeline, CLIP) のロード/サイズ推定ロジックを追加・統合。
+- ステップ 3: `tagger_wrapper_lib` の `registry.py` をベースに、統一 `ModelRegistry` (`core/registry.py`) を実装。`models/` ディレクトリを探索するように修正。
+- ステップ 4: `BaseAnnotator` (`core/base.py`) を設計・実装。
+- ステップ 5: 共通例外 (`exceptions/errors.py`) とユーティリティ (`core/utils.py`, 設定関連含む) を統合・配置。
+- ステップ 6: Tagger 実装クラスを `models/` ディレクトリに移植 (例: `tagger_onnx.py`) し、`BaseAnnotator` を継承するように修正。`ModelRegistry` に登録。
+- ステップ 7: Scorer 実装クラス (`Classifier` 含む) を `models/` ディレクトリに移植 (例: `scorer_clip.py`, `scorer_classifier.py`) し、`BaseAnnotator` を継承するように修正。`ModelRegistry` に登録。
+- ステップ 8: 統合 API クラス `Annotator` (`annotator.py`) を実装。
+- ステップ 9: 統合テストを作成・実行。
+- ステップ 10: `pyproject.toml`, `README.md`, `examples/example.py` を作成・更新。
+
+## 8. 懸念事項
+
+- API 互換性。
+- 依存関係のバージョン衝突。
+- 設定ファイル (`models.toml`) のフォーマット統一・移行。
+- `ModelLoad` のキャッシュサイズ推定精度の検証。
+- テストカバレッジの確保。
+- (単一 models ディレクトリの場合) モデル数が増えた際の `models/` ディレクトリの見通し。
+
+## 9. コーディング規約
+
+- **フォーマッター**: Ruff format を使用し、コードスタイルを統一する
+- **リンター**: Ruff を使用し、静的解析とコード品質チェックを行う (Flake8, isort 等の代替)。
+- **型チェック**: Mypy を使用し、型ヒントの静的解析を行う。
+- **スタブファイル**: 必要に応じてスタブファイル (.pyi) を用意し、型情報を提供する (特に外部ライブラリや動的コード)。スタブファイルは対応する `.py` と同じ場所に配置する。 # <- 追加
+- **命名規則**: PEP 8 に準拠する (変数: `snake_case`, クラス: `CamelCase` など)。
+- **Docstring**: Google スタイル または NumPy スタイルで記述し、統一する。
+- **設定**: `pyproject.toml` に Ruff (format, lint), Mypy の設定を記述する。
+
+## 10. 開発環境
+
+- **パッケージ管理・仮想環境**: uv を使用する (`pip` と `venv` の代替)。
+  - `uv venv` で仮想環境を作成。
+  - `uv pip install` で `pyproject.toml` パッケージをインストール。
+- **設定ファイル**: `pyproject.toml` にプロジェクト設定、依存関係、開発ツール設定を集約する。
+
+## 統合時の設計変更に関するルール
+
+1. **元の実装の維持**
+   - 既存の実装は可能な限り維持する
+   - 変更が必要な場合は、その理由と変更内容を明確にドキュメント化する
+
+2. **設計変更の記録**
+   - 設計変更を行う場合は、以下の情報を必ずドキュメントに記録する：
+     - 変更前の実装の概要
+     - 変更の理由
+     - 変更の影響範囲
+     - 変更後の実装の概要
+     - テスト方針
+
+3. **互換性の維持**
+   - 既存のAPIとの互換性を可能な限り維持する
+   - 破壊的変更が必要な場合は、移行パスを提供する
+
+4. **段階的な統合**
+   - 大きな変更は小さな単位に分割する
+   - 各段階でテストを行い、動作を確認する
+

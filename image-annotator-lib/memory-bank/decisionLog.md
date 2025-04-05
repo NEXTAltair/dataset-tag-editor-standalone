@@ -80,3 +80,91 @@
 - 動作確認の実施
 - 既存のテストケースの実行
 - ドキュメントの更新
+
+## 2024-04-02: ModelLoad の階層構造の改善
+
+### 背景と課題
+
+- 現在の ModelLoad の実装では、各モデルタイプ（Transformers、ONNX、CLIP 等）のロード処理が単一クラスに集中している
+- 特に CLIP モデルのロードが特別な扱いとなっており、他のモデルタイプとの一貫性が欠如
+- コンポーネントの構造が各モデルタイプで異なるため、統一的なインターフェースでの抽象化が困難
+
+### 決定事項
+
+二階層のローダー構造を採用:
+
+1. **基底ローダー層**
+
+   - `BaseModelLoader`: 全モデルタイプ共通の基底クラス
+   - メモリ管理、キャッシュ制御の共通機能を提供
+   - 必要なコンポーネントの定義を強制
+
+2. **具象ローダー層**
+   - 各モデルタイプ固有のローダー実装
+   - 例: `TransformersLoader`, `ONNXLoader`, `CLIPLoader`
+   - モデルタイプ固有の初期化とロードロジックを実装
+
+### 設計の詳細
+
+```python
+class BaseModelLoader:
+    def __init__(self, model_name: str, device: str):
+        self.model_name = model_name
+        self.device = device
+
+    @abstractmethod
+    def load(self) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def get_required_components(self) -> list[str]:
+        pass
+
+class TransformersLoader(BaseModelLoader):
+    def get_required_components(self) -> list[str]:
+        return ["model", "processor"]
+
+class ONNXLoader(BaseModelLoader):
+    def get_required_components(self) -> list[str]:
+        return ["session", "csv_path"]
+
+class CLIPLoader(BaseModelLoader):
+    def get_required_components(self) -> list[str]:
+        return ["model", "processor", "clip_model"]
+```
+
+### 利点
+
+1. 責任の明確な分離
+2. モデルタイプごとの要件を明示的に定義可能
+3. 新しいモデルタイプの追加が容易
+4. テストの構造化が改善
+
+### 検討された代替案
+
+1. ~~単一インターフェースでの統一~~
+
+   - コンポーネントの違いを隠蔽しようとすると、かえって複雑化
+   - 却下理由: モデルタイプごとの特性を活かせない
+
+2. ~~三階層以上の構造~~
+   - フレームワーク層を追加する案
+   - 却下理由: 現状の要件には過剰な複雑さ
+
+### 影響範囲
+
+1. **テストへの影響**
+
+   - BDD テストのシナリオ構造の変更が必要
+   - モデルタイプごとの明確なテストケース定義が可能に
+
+2. **既存コードへの影響**
+   - `ModelLoad`クラスの大幅なリファクタリングが必要
+   - 移行期間中の互換性維持が必要
+
+### 次のステップ
+
+1. 基底ローダークラスの実装
+2. 各モデルタイプのローダー実装
+3. テストケースの更新
+4. 既存コードの段階的移行
