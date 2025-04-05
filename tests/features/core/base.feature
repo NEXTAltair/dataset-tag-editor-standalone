@@ -1,15 +1,15 @@
-# このfeatureファイルはsrc/scorer_wrapper_lib/core/base.pyモジュールの
-# BaseScorer抽象クラスとその実装クラスの基本機能をテストします。
+# このfeatureファイルはsrc/image_annotator_lib/core/base.pyモジュールの
+# BaseBaseAnnotator抽象クラスとその実装クラスの基本機能をテストします。
 #
 # 【モデルロードの仕組み】
-# - BaseScorer の初期化時（__init__）ではモデル構造や重みはロードされません
+# - BaseBaseAnnotator の初期化時（__init__）ではモデル構造や重みはロードされません
 # - 実際のモデルロードは _load_model メソッドで行われ、内部で model_factory.py の
 #   create_model 関数を呼び出します
 # - 画像の埋め込み処理は image_embeddings 関数を使用します
 # - モデルのロード状態は is_model_loaded フラグで管理されます
 
-Feature: BaseScorer基本機能のテスト
-    BaseScorer クラスとその派生クラスの基本機能をテストする
+Feature: BaseBaseAnnotator基本機能のテスト
+    BaseBaseAnnotator クラスとその派生クラスの基本機能をテストする
 
     Background:
         Given テスト用のモデル設定が存在する
