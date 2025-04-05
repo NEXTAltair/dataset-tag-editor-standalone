@@ -5,7 +5,7 @@ alwaysApply: true
 ---
 ---
 description: "Coding rules and development environment setup for Python projects"
-globs: image-annotator-lib, tests
+globs: "*.py"
 version: "2.6.0"
 ---
 # コーディングルール (AI向け指示)

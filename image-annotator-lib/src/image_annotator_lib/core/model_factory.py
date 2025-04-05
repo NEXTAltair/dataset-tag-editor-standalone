@@ -182,7 +182,10 @@ class TransformersLoader(BaseModelLoader):
 class TransformersPipelineLoader(BaseModelLoader):
     """TransformersPipelineモデルのローダー"""
 
-    def load_components(self, model_path: str, batch_size: int) -> dict[str, Any] | None:
+    def __init__(self, model_name: str, device: str):
+        super().__init__(model_name, device)
+
+    def load_components(self, task: str, model_path: str, batch_size: int) -> dict[str, Any] | None:
         """Pipelineモデルをロード"""
         if self.model_name in self._MODEL_STATES:
             logger.debug(f"モデル '{self.model_name}' は既にロード済み")
@@ -190,7 +193,8 @@ class TransformersPipelineLoader(BaseModelLoader):
 
         try:
             pipeline_obj = pipeline(
-                model=model_path,
+                task,
+                model_path,
                 device=self.device,
                 batch_size=batch_size,
                 use_fast=True,
@@ -483,11 +487,11 @@ class ModelLoad:
 
     @staticmethod
     def load_transformers_pipeline_components(
-        model_name: str, model_path: str, device: str, batch_size: int
+        task: str, model_name: str, model_path: str, device: str, batch_size: int
     ) -> dict[str, Any] | None:
         """TransformersPipelineモデルをロード"""
         loader = TransformersPipelineLoader(model_name, device)
-        return loader.load_components(model_path, batch_size)
+        return loader.load_components(task, model_path, batch_size)
 
     @staticmethod
     def load_onnx_components(model_name: str, model_path: str, device: str) -> dict[str, Any]:

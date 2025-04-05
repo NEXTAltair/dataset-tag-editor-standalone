@@ -101,7 +101,8 @@ select = [
     "RUF", # Ruff-specific rules
 ]
 ignore = [
-    "E501", # Line too long (handled by formatter)
+    "E501",   # Line too long (handled by formatter)
+    "RUF021", # カタカナの `ノ` でなにか言われるのを回避
 ]
 
 [tool.ruff.format]

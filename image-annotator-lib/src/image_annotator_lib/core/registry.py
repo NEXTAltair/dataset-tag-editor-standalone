@@ -214,8 +214,24 @@ def register_annotators() -> dict[str, ModelClass]:
     return _MODEL_CLASS_OBJ_REGISTRY
 
 
+# TODO[DESIGN]: レジストリの責務分離を検討
+# - 現状: クラス登録とインスタンス管理が分離している（_MODEL_CLASS_OBJ_REGISTRYとapi.pyの_MODEL_INSTANCE_REGISTRY）
+# - 課題:
+#   1. レジストリ関連の機能が複数箇所に分散
+#   2. get_cls_obj_registry()が内部実装を直接露出
+# - 改善案:
+#   - レジストリ機能の一元管理を検討
+#   - ただし、既存コードへの影響が大きいため、メジャーバージョンアップ時に対応
 def get_cls_obj_registry() -> dict[str, ModelClass]:
-    """モデルクラスオブジェクトのレジストリを取得"""
+    """モデルクラスオブジェクトのレジストリを取得
+
+    Note:
+        このAPIは非推奨となる可能性があります。
+        将来的にはより適切なインターフェースに置き換えられる可能性があります。
+
+    Returns:
+        dict[str, ModelClass]: 登録されたモデルクラスのレジストリ
+    """
     return _MODEL_CLASS_OBJ_REGISTRY
 
 

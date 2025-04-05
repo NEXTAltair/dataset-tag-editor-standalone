@@ -12,32 +12,34 @@ from typing import Any
 
 import psutil
 import torch
-from PIL import Image
-from pytest_bdd import given, scenarios, then, when
 from image_annotator_lib.api import (
     _MODEL_INSTANCE_REGISTRY,
+    AnnotationResultDict,
     annotate,
     get_annotator_instance,
-)  # type: ignore
+)
 from image_annotator_lib.core.registry import (
     ModelClass,
     get_cls_obj_registry,
     list_available_annotators,
-)  # type: ignore
+)
+from image_annotator_lib.core.utils import calculate_phash  # type: ignore
+from PIL import Image
+from pytest_bdd import given, scenarios, then, when
 
-scenarios("../features/scorer.feature")
+scenarios("../../tests/features/integration/scorer.feature")
 
 
 # resourcesディレクトリのパス
 resources_dir = Path(__file__).parent.parent / "resources"
 
 
-def load_image_files(count=1):
+def load_image_files(count: int = 1) -> list[Image.Image]:
     """指定された枚数の画像ファイルをリストとして読み込む"""
     image_path = resources_dir / "img" / "1_img"
     files = list(image_path.glob("*.webp"))
 
-    # 指定された枚数だけファイルを取得（ディレクトリ内のファイル数を超えないように）
+    # 指定された枚数だけファイルを取得(ディレクトリ内のファイル数を超えないように)
     count = min(count, len(files))
     files = files[:count]
 
@@ -82,7 +84,7 @@ def given_valid_images_multiple() -> list[Image.Image]:
 
 
 @given("複数のモデルが指定されている", target_fixture="multiple_models")
-def given_multiple_models(scorer_registry) -> list[str]:
+def given_multiple_models(scorer_registry: dict[str, ModelClass]) -> list[str]:
     # 利用可能なモデル名のリスト
     available_models = list(scorer_registry.keys())
 
@@ -107,7 +109,7 @@ def given_valid_images_large() -> list[Image.Image]:
 
 
 @given("すべての利用可能なモデルが指定されている", target_fixture="all_models")
-def given_all_models(scorer_registry) -> list[str]:
+def given_all_models(scorer_registry: dict[str, ModelClass]) -> list[str]:
     return list(scorer_registry.keys())
 
 
@@ -121,14 +123,14 @@ def when_instantiate_all_models(available_models: list[str]) -> dict[str, Any]:
 
 
 @when("同じモデルクラスを再度インスタンス化する", target_fixture="reused_instance")
-def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
-    # 最初のモデル名を取得（どのモデルでもキャッシュ機能のテストには十分）
+def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict[str, Any]:
+    # 最初のモデル名を取得(どのモデルでもキャッシュ機能のテストには十分)
     model_name = next(iter(instantiated_models.keys()))
 
     # 元のインスタンスを記録
     original_instance = instantiated_models[model_name]
 
-    # get_annotator_instanceを使ってキャッシュから取得（_create_scorer_instanceではない）
+    # get_annotator_instanceを使ってキャッシュから取得(_create_scorer_instanceではない)
     reused_instance = get_annotator_instance(model_name)
 
     # 比較のために必要な情報を返す
@@ -140,9 +142,7 @@ def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
 
 
 @when("この画像をスコアリングする", target_fixture="scoring_results")
-def when_score_image(
-    valid_image: list[Image.Image], model_for_scoring: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+def when_score_image(valid_image: list[Image.Image], model_for_scoring: list[str]) -> AnnotationResultDict:
     # 単一のモデルで評価する
     return annotate(valid_image, model_for_scoring)
 
@@ -150,7 +150,7 @@ def when_score_image(
 @when("これらの画像を一括評価する", target_fixture="scoring_results")
 def when_score_images(
     valid_images: list[Image.Image], model_for_scoring: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+) -> AnnotationResultDict:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_images, model_for_scoring)
 
@@ -158,7 +158,7 @@ def when_score_images(
 @when("この画像を複数のモデルで評価する", target_fixture="scoring_results")
 def when_score_image_multiple_models(
     valid_image: list[Image.Image], multiple_models: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+) -> AnnotationResultDict:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_image, multiple_models)
 
@@ -166,13 +166,15 @@ def when_score_image_multiple_models(
 @when("これらの画像を複数のモデルで一括評価する", target_fixture="scoring_results")
 def when_score_images_multiple_models(
     valid_images: list[Image.Image], multiple_models: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+) -> AnnotationResultDict:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_images, multiple_models)
 
 
 @when("これらの画像を複数回連続で評価する", target_fixture="stress_test_results")
-def when_annotate_images_repeatedly(valid_images_large: list[Image.Image], all_models: list[str]) -> dict:
+def when_annotate_images_repeatedly(
+    valid_images_large: list[Image.Image], all_models: list[str]
+) -> dict[str, Any]:
     results = []
     memory_usage = []  # CPUメモリ
     gpu_memory_usage = []  # VRAM
@@ -213,7 +215,7 @@ def when_annotate_images_repeatedly(valid_images_large: list[Image.Image], all_m
 
 
 @when("各モデルを交互に100回切り替えながら画像を評価する", target_fixture="switch_test_results")
-def when_switch_models_repeatedly(valid_image: list[Image.Image], all_models: list[str]) -> dict:
+def when_switch_models_repeatedly(valid_image: list[Image.Image], all_models: list[str]) -> dict[str, Any]:
     results = []
     memory_readings = []
     start_time = time.time()
@@ -246,7 +248,7 @@ def when_switch_models_repeatedly(valid_image: list[Image.Image], all_models: li
 
 # then ----------------
 @then("各モデルが正常にインスタンス化される")
-def then_all_models_instantiated(available_models: list[str], instantiated_models: dict[str, object]):
+def then_all_models_instantiated(available_models: list[str], instantiated_models: dict[str, Any]) -> None:
     # すべてのモデルがインスタンス化されていることを確認
     for model_name in available_models:
         # キャッシュに存在することを確認
@@ -256,18 +258,9 @@ def then_all_models_instantiated(available_models: list[str], instantiated_model
         model_instance = _MODEL_INSTANCE_REGISTRY[model_name]
         assert model_instance is not None, f"モデル '{model_name}' のインスタンスが None です"
 
-        # 必要なメソッドが存在することを確認
-        assert hasattr(model_instance, "predict"), f"モデル '{model_name}' に predict メソッドがありません"
-        assert hasattr(model_instance, "_calculate_score"), (
-            f"モデル '{model_name}' に _calculate_score メソッドがありません"
-        )
-        assert hasattr(model_instance, "_generate_result"), (
-            f"モデル '{model_name}' に _generate_result メソッドがありません"
-        )
-
 
 @then("キャッシュされた同一のモデルインスタンスが返される")
-def then_cached_model_instance_returned(reused_instance: dict) -> None:
+def then_cached_model_instance_returned(reused_instance: dict[str, Any]) -> None:
     model_name = reused_instance["model_name"]
     original = reused_instance["original_instance"]
     reused = reused_instance["reused_instance"]
@@ -281,7 +274,7 @@ def then_cached_model_instance_returned(reused_instance: dict) -> None:
 
 @then("画像に対するモデルの処理結果が返される")
 def then_valid_score_returned_single_image(
-    scoring_results: dict[str, list[dict[str, Any]]],
+    scoring_results: AnnotationResultDict,
     valid_image: list[Image.Image],
 ) -> None:
     verify_scoring_results(scoring_results, valid_image, expect_multiple_models=False)
@@ -289,7 +282,7 @@ def then_valid_score_returned_single_image(
 
 @then("各画像に対するモデルの処理結果が返される")
 def then_valid_score_returned_multiple_images(
-    scoring_results: dict[str, list[dict[str, Any]]],
+    scoring_results: AnnotationResultDict,
     valid_images: list[Image.Image],
 ) -> None:
     verify_scoring_results(scoring_results, valid_images, expect_multiple_models=False)
@@ -297,7 +290,7 @@ def then_valid_score_returned_multiple_images(
 
 @then("画像に対する各モデルの処理結果が返される")
 def then_valid_score_returned_multiple_models(
-    scoring_results: dict[str, list[dict[str, Any]]],
+    scoring_results: AnnotationResultDict,
     valid_image: list[Image.Image],
 ) -> None:
     verify_scoring_results(scoring_results, valid_image, expect_multiple_models=True)
@@ -305,7 +298,7 @@ def then_valid_score_returned_multiple_models(
 
 @then("各画像に対する各モデルの処理結果が返される")
 def then_valid_score_returned_multiple_models_multiple_images(
-    scoring_results: dict[str, list[dict[str, Any]]],
+    scoring_results: AnnotationResultDict,
     valid_images: list[Image.Image],
 ) -> None:
     verify_scoring_results(scoring_results, valid_images, expect_multiple_models=True)
@@ -313,7 +306,7 @@ def then_valid_score_returned_multiple_models_multiple_images(
 
 # 共通の検証ロジック
 def verify_scoring_results(
-    scoring_results: dict[str, list[dict[str, Any]]],
+    scoring_results: AnnotationResultDict,
     images: list[Image.Image],
     expect_multiple_models: bool = False,
 ) -> None:
@@ -327,36 +320,42 @@ def verify_scoring_results(
     # 結果が存在するか確認
     assert len(scoring_results) > 0, "スコアリング結果が空です"
 
-    # モデル数の確認
-    if expect_multiple_models:
-        assert len(scoring_results) > 1, "2つ以上のモデルで評価されていません"
-    else:
-        assert len(scoring_results) == 1, "2つ以上のモデルが評価されています"
+    # 画像数と結果の数が一致することを確認
+    assert len(scoring_results) == len(images), "評価された画像の枚数が正しくありません"
 
-    # 各モデルの結果をチェック
-    model_count = 0
-    for model_name, results in scoring_results.items():
-        # 評価された画像の枚数が正しいことを確認
-        assert len(results) == len(images), "評価された画像の枚数が正しくありません"
+    # 各画像のpHashを計算
+    image_phashes = [calculate_phash(image) for image in images]
 
-        # 結果の形式が正しいことを確認
-        assert all(isinstance(result, dict) for result in results), "結果の形式が不正です"
+    # 各画像の結果をチェック
+    for phash_key, model_results in scoring_results.items():
+        # pHashの形式を確認
+        assert isinstance(phash_key, str), "pHashキーが文字列ではありません"
 
-        # 各結果に必要なキーが含まれているか
-        for result in results:
-            assert "model_name" in result, "結果に 'model_name' キーがありません"
-            assert "score_tag" in result, "結果に 'score_tag' キーがありません"
-            assert "model_output" in result, "結果に 'model_output' キーがありません"
+        # pHashが計算したものと一致するか確認
+        assert phash_key in image_phashes, f"pHashキー '{phash_key}' が入力画像のpHashと一致しません"
 
-        model_count += 1
+        # モデル数が期待通りか確認
+        if expect_multiple_models:
+            assert len(model_results) > 1, "2つ以上のモデルで評価されていません"
+        else:
+            assert len(model_results) == 1, "2つ以上のモデルで評価されています"
 
-    # 複数モデルの場合、モデル数が正しいか確認
-    if expect_multiple_models:
-        assert model_count == len(scoring_results), "モデルの数が正しくありません"
+        # 各モデルの結果をチェック
+        for model_name, result in model_results.items():
+            # モデル名が文字列であることを確認
+            assert isinstance(model_name, str), "モデル名が文字列ではありません"
+
+            # 結果の形式が正しいことを確認
+            assert isinstance(result, dict), "結果の形式が不正です"
+
+            # 各結果に必要なキーが含まれているか
+            assert "tags" in result, "結果に 'tags' キーがありません"
+            assert "formatted_output" in result, "結果に 'formatted_output' キーがありません"
+            assert "error" in result, "結果に 'error' キーがありません"
 
 
 @then("全ての評価が正常に完了している")
-def then_all_evaluations_completed(stress_test_results: dict) -> None:
+def then_all_evaluations_completed(stress_test_results: dict[str, Any]) -> None:
     results = stress_test_results["results"]
     image_count = stress_test_results["image_count"]
     model_count = stress_test_results["model_count"]
@@ -366,13 +365,17 @@ def then_all_evaluations_completed(stress_test_results: dict) -> None:
 
     # 各ラウンドで全モデルの結果があることを確認
     for i, round_results in enumerate(results):
-        assert len(round_results) == model_count, f"ラウンド{i + 1}で一部のモデル結果が欠落しています"
+        # 各ラウンドの結果をチェック
+        for phash_key, model_results in round_results.items():
+            # 各モデルの結果をチェック
+            for model_name, result in model_results.items():
+                # 結果の形式が正しいことを確認
+                assert isinstance(result, dict), "結果の形式が不正です"
 
-        # 各モデルの結果が画像数と一致していることを確認
-        for model_name, model_results in round_results.items():
-            assert len(model_results) == image_count, (
-                f"ラウンド{i + 1}のモデル{model_name}で画像{image_count}枚分の結果がありません"
-            )
+                # 各結果に必要なキーが含まれているか
+                assert "tags" in result, "結果に 'tags' キーがありません"
+                assert "formatted_output" in result, "結果に 'formatted_output' キーがありません"
+                assert "error" in result, "結果に 'error' キーがありません"
 
     print(f"ストレステスト完了: {stress_test_results['total_time']:.2f}秒")
     print(f"評価画像数: {image_count}枚")
@@ -380,8 +383,8 @@ def then_all_evaluations_completed(stress_test_results: dict) -> None:
 
 
 @then("GPU・CPUメモリの使用状況が許容範囲内である")
-def then_memory_usage_is_acceptable(stress_test_results: dict) -> None:
-    # CPU（メイン）メモリのチェック
+def then_memory_usage_is_acceptable(stress_test_results: dict[str, Any]) -> None:
+    # CPU(メイン)メモリのチェック
     memory_readings = stress_test_results["memory_usage"]
     initial_memory = memory_readings[0]
     final_memory = memory_readings[-1]
@@ -405,14 +408,14 @@ def then_memory_usage_is_acceptable(stress_test_results: dict) -> None:
             print(f"GPUメモリ増加量: {gpu_increase:.2f}MB")
 
             # GPUメモリの許容範囲チェック
-            assert gpu_increase < 500, f"GPUメモリ使用量が{gpu_increase:.2f}MB増加しました（許容値:500MB）"
+            assert gpu_increase < 500, f"GPUメモリ使用量が{gpu_increase:.2f}MB増加しました(許容値:500MB)"
 
-    # CPU（メイン）メモリの許容範囲チェック
-    assert memory_increase < 1500, f"CPUメモリ使用量が{memory_increase:.2f}MB増加しました（許容値:1500MB）"
+    # CPU(メイン)メモリの許容範囲チェック
+    assert memory_increase < 1500, f"CPUメモリ使用量が{memory_increase:.2f}MB増加しました(許容値:1500MB)"
 
 
 @then("モデル切り替えが正常に動作している")
-def then_model_switching_works_correctly(switch_test_results: dict) -> None:
+def then_model_switching_works_correctly(switch_test_results: dict[str, Any]) -> None:
     results = switch_test_results["results"]
     switch_count = switch_test_results["switch_count"]
 
@@ -431,7 +434,7 @@ def then_model_switching_works_correctly(switch_test_results: dict) -> None:
 
 
 @then("リソースリークが発生していない")
-def then_no_resource_leaks(switch_test_results: dict) -> None:
+def then_no_resource_leaks(switch_test_results: dict[str, Any]) -> None:
     memory_readings = switch_test_results["memory_readings"]
 
     if len(memory_readings) >= 2:

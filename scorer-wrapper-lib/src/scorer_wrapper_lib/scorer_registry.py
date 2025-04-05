@@ -107,7 +107,6 @@ def get_cls_obj_registry() -> dict[str, ModelClass]:
 
 
 def list_available_scorers() -> list[str]:
-    # TODO: スコアラー以外にも対応したら関数名は変更する
     """
     register_scorersで登録された利用可能なスコアラーモデル名のリストを返す
 

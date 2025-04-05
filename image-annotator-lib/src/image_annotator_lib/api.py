@@ -4,7 +4,7 @@
 """
 
 import logging
-from typing import Any
+from typing import Any, TypedDict
 
 from PIL import Image
 
@@ -16,6 +16,40 @@ logger = logging.getLogger(__name__)
 _MODEL_INSTANCE_REGISTRY: dict[str, Any] = {}
 
 
+class ModelResultDict(TypedDict, total=False):
+    """モデルの評価結果を表す型定義。
+
+    Attributes:
+        tags: アノテーション結果の主要な文字列リスト。
+        formatted_output: 整形済み出力。
+        error: 処理中に発生したエラーメッセージ。エラーがない場合は None。
+    """
+
+    tags: list[str] | None
+    formatted_output: Any | None
+    error: str | None
+
+
+class AnnotationResultDict(dict[str, dict[str, ModelResultDict]]):
+    """画像のpHashをキーとする評価結果辞書。
+
+    Attributes:
+        [phash]: 画像のpHashをキーとする辞書。
+                 各キーの値は、モデル名をキーとする辞書。
+                 各モデル名の値は、そのモデルの評価結果。
+    """
+
+    pass
+
+
+# REFACTOR: インスタンス管理の改善
+# - 現状: _MODEL_INSTANCE_REGISTRYがAPIレイヤーに配置
+# - 課題:
+#   1. レジストリ機能との分離が不自然
+#   2. インスタンス管理の責務がAPIレイヤーにある
+# - 当面の方針:
+#   - 既存の互換性と安定性を優先
+#   - 大規模な改修は次期メジャーバージョンで検討
 def _create_annotator_instance(model_name: str) -> Any:
     """
     _MODEL_INSTANCE_REGISTRYに登録されているモデルに対応したクラスを取得し、
@@ -43,7 +77,7 @@ def get_annotator_instance(model_name: str) -> Any:
     まだロードされていない場合は、新たにインスタンスを作成してキャッシュに保存する。
 
     Args:
-        model_name: モデルの名前（models.tomlで定義されたキー）
+        model_name: モデルの名前(models.tomlで定義されたキー)
 
     Returns:
         スコアラーインスタンス
@@ -82,14 +116,14 @@ def _annotate_model(
 def _process_model_results(
     model_name: str,
     annotation_results: list[AnnotationResult],
-    results_by_phash: dict[str, dict[str, dict[str, Any]]],
+    results_by_phash: AnnotationResultDict,
 ) -> None:
     """モデルの結果を pHash ベースの構造に変換します。
 
     Args:
         model_name: モデルの名前
         annotation_results: モデルの予測結果リスト
-        results_by_phash: pHash をキーとする結果辞書（更新対象）
+        results_by_phash: pHash をキーとする結果辞書(更新対象)
     """
     for result in annotation_results:
         # pHash が None の場合は代替キーを使用
@@ -113,7 +147,7 @@ def _handle_error(
     model_name: str,
     error: Exception,
     num_images: int,
-    results_by_phash: dict[str, dict[str, dict[str, Any]]],
+    results_by_phash: AnnotationResultDict,
     phash_map: dict[int, str],
 ) -> None:
     """エラー発生時の結果処理を行います。
@@ -122,7 +156,7 @@ def _handle_error(
         model_name: エラーが発生したモデルの名前
         error: 発生した例外
         num_images: 処理対象の画像数
-        results_by_phash: pHash をキーとする結果辞書（更新対象）
+        results_by_phash: pHash をキーとする結果辞書(更新対象)
         phash_map: インデックスとpHashのマッピング辞書
     """
     error_msg = str(error)
@@ -141,10 +175,8 @@ def _handle_error(
         }
 
 
-def annotate(
-    images_list: list[Image.Image], model_name_list: list[str]
-) -> dict[str, dict[str, dict[str, Any]]]:
-    """複数の画像を指定された複数のモデルで評価（アノテーション）します。
+def annotate(images_list: list[Image.Image], model_name_list: list[str]) -> AnnotationResultDict:
+    """複数の画像を指定された複数のモデルで評価(アノテーション)します。
 
     各画像のpHashをキーとして、モデルごとの評価結果を整理して返します。
     これにより、各画像に対する複数モデルの結果を簡単に比較できます。
@@ -179,7 +211,7 @@ def annotate(
 
     # 結果格納用 (pHash ベース)
     # {phash: {model_name: {"tags": [...], "formatted_output": ..., "error": ...}}}
-    results_by_phash: dict[str, dict[str, dict[str, Any]]] = {}
+    results_by_phash: AnnotationResultDict = AnnotationResultDict()
 
     # 各モデルで評価
     for model_name in model_name_list:
@@ -199,7 +231,7 @@ def annotate(
                 logger.error(
                     f"モデル '{model_name}' の結果リスト長 ({len(annotation_results)}) が画像数 ({len(images_list)}) と一致しません。"
                 )
-                error_entry = {
+                error_entry: ModelResultDict = {
                     "tags": None,
                     "formatted_output": None,
                     "error": "処理結果が不足しています",

@@ -462,9 +462,9 @@ class TransformersBaseAnnotator(BaseAnnotator):
     def __exit__(
         self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
     ) -> None:
-        self.components = ModelLoad.cache_to_main_memory(self.model_name, self.components, self.device)
+        self.components = ModelLoad.cache_to_main_memory(self.model_name, self.components)
 
-    def _preprocess_image(self, images: list[Image.Image]) -> list[dict[str, Any]]:
+    def _preprocess_images(self, images: list[Image.Image]) -> list[dict[str, Any]]:
         """画像バッチを前処理します。各画像を個別に処理して結果をリストで返します。"""
         results = []
         for image in images:
@@ -783,16 +783,18 @@ class PipelineBaseAnnotator(BaseAnnotator):
     def __init__(self, model_name: str):
         super().__init__(model_name=model_name)
         self.batch_size = self.config.get("batch_size", 8)
+        self.task = self.config.get("task", "image-classification")
 
     def __enter__(self) -> "PipelineBaseAnnotator":
         """
         モデルの状態に基づいて、必要な場合のみロードまたは復元
         """
-        loaded_components = ModelLoad.pipeline_model_load(
+        loaded_components = ModelLoad.load_transformers_pipeline_components(
+            self.task,
             self.model_name,
             self.model_path,
-            self.batch_size,
             self.device,
+            self.batch_size,
         )
         if loaded_components:
             self.components = loaded_components
@@ -810,12 +812,6 @@ class PipelineBaseAnnotator(BaseAnnotator):
         """Pipeline は PIL Image を直接受け付けるため、前処理は不要。"""
         return images
 
-    def _format_predictions(self, raw_outputs: list[list[dict[str, Any]]]) -> Any:
-        """
-        Pipeline の生出力は人間が読めるので不要
-        """
-        return raw_outputs
-
     def _run_inference(self, processed: list[Image.Image]) -> list[list[dict[str, Any]]]:
         """Pipeline を使用して推論を実行します。"""
         try:
@@ -825,10 +821,11 @@ class PipelineBaseAnnotator(BaseAnnotator):
             logger.exception(f"Pipeline 推論中にエラーが発生: {e}")
             raise
 
-    @abstractmethod
-    def _format_predictions(self, raw_outputs: Any) -> list[Any]:
-        """Pipeline の生出力バッチをフォーマットします (サブクラスで実装)。"""
-        raise NotImplementedError("Pipeline サブクラスは _format_predictions を実装する必要があります。")
+    def _format_predictions(self, raw_outputs: list[list[dict[str, Any]]]) -> Any:
+        """
+        Pipeline の生出力は人間が読めるので不要
+        """
+        return raw_outputs
 
 
 class ONNXBaseAnnotator(BaseAnnotator):
