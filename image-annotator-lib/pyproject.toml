@@ -136,3 +136,15 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
     "\\.\\.\\.",                  # ... (Ellipsis)
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/image_annotator_lib"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"src/image_annotator_lib/py.typed" = "image_annotator_lib/py.typed"

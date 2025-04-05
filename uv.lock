@@ -244,7 +244,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "gradio" },
-    { name = "image-annotator-lib" },
+    { name = "image-annotator-lib", extra = ["dev"] },
     { name = "numpy" },
     { name = "pillow" },
     { name = "print-color" },
@@ -274,7 +274,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "gradio" },
-    { name = "image-annotator-lib", editable = "image-annotator-lib" },
+    { name = "image-annotator-lib", extras = ["dev"], editable = "image-annotator-lib" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "numpy" },
     { name = "pillow" },
@@ -656,6 +656,22 @@ dependencies = [
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "psutil" },
+    { name = "pytest" },
+    { name = "pytest-bdd" },
+    { name = "pytest-clarity" },
+    { name = "pytest-cov" },
+    { name = "pytest-playwright" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "types-pillow" },
+    { name = "types-requests" },
+    { name = "types-toml" },
 ]
 
 [package.metadata]

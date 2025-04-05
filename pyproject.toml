@@ -5,7 +5,7 @@ description = "Dataset tag editor with image interrogator support"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "image-annotator-lib",
+    "image-annotator-lib[dev]",
     "gradio",
     "transformers",
     "requests",
