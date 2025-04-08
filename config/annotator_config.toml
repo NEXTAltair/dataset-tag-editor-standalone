@@ -1,24 +1,16 @@
-# TODO: このファイルは taggers.toml と models.toml を単純に結合したものです。
-# モデル移行後にクラス名やパス、パラメータを image-annotator-lib の構造に合わせて修正する必要があります。
-# また、TOML の構造自体も後でリファクタリングを検討します（例: [taggers], [scorers] セクション分けなど）。
-
 [aesthetic_shadow_v1]  # model_name
-type = "pipeline" # model_type 処理方法
 model_path = "shadowlilac/aesthetic-shadow" # model_path モファイルパスか､HFリポジトリ名､DL先のURL
 device = "cuda" # device 処理に使う使用デバイス
 class = "AestheticShadow" # class 使用するクラス Optional 必要ならば実装する
 
 [aesthetic_shadow_v2]
-type = "pipeline"
 model_path = "NEXTAltair/cache_aestheic-shadow-v2"
 device = "cuda"
 class = "AestheticShadow"
 
 [cafe_aesthetic]
-type = "pipeline"
 model_path = "cafeai/cafe_aesthetic"
 device = "cuda"
-score_prefix = "[CAFE]"  # タグ形式に変換されたスコアの先頭に付ける文字列 例: [CAFE]score_5
 class = "CafePredictor"
 
 # [cafe_style] # TODO: scoring モデルではないので後回し
@@ -36,19 +28,15 @@ class = "CafePredictor"
 # class = "CafePredictor"
 
 [ImprovedAesthetic]
-type = "clip"
 model_path = "https://github.com/christophschuhmann/improved-aesthetic-predictor/raw/main/sac+logos+ava1-l14-linearMSE.pth" #ローカルに保存している場合はパスを指定
 base_model = "openai/clip-vit-large-patch14" # CLIPのベースモデル
 device = "cuda"
-score_prefix = "[IAP]"
 class = "ImprovedAesthetic"
 
 [WaifuAesthetic]
-type = "clip"
 model_path = "https://huggingface.co/hakurei/waifu-diffusion-v1-4/resolve/main/models/aes-B32-v0.pth"
 base_model = "openai/clip-vit-base-patch32"
 device = "cuda"
-score_prefix = "[WAIFU]"
 class = "WaifuAesthetic"
 activation_type = "ReLU"        # 指定あり → ReLU活性化関数を使用
 final_activation_type = "Sigmoid"  # 指定あり → 最終層にSigmoid活性化関数を使用
@@ -114,7 +102,6 @@ estimated_size_gb = 0.529
 [wd-convnext-tagger-v3]
 model_path = "SmilingWolf/wd-convnext-tagger-v3"
 class = "WDTagger"
-device = "cpu"
 estimated_size_gb = 0.552
 
 [wd-swinv2-tagger-v3]
@@ -130,7 +117,6 @@ estimated_size_gb = 1.761
 [wd-eva02-large-tagger-v3]
 model_path = "SmilingWolf/wd-eva02-large-tagger-v3"
 class = "WDTagger"
-device = "cpu"
 estimated_size_gb = 1.761
 
 [BLIPLargeCaptioning]
@@ -174,15 +160,16 @@ class = "BLIP2Tagger"
 device = "cpu"
 estimated_size_gb = 17.627
 
-# [blip2-flan-t5-xxl] #スペック不足メモリに展開できない
-# model_path = "Salesforce/blip2-flan-t5-xxl"
-# class = "BLIP2Tagger"
-# device = "cpu"
+[blip2-flan-t5-xxl] #スペック不足メモリに展開できない
+model_path = "Salesforce/blip2-flan-t5-xxl"
+class = "BLIP2Tagger"
+device = "cpu"
 
 [GITLargeCaptioning]
 model_path = "microsoft/git-large-coco"
 class = "GITTagger"
 estimated_size_gb = 1.762
+device = "cpu"
 
 ["ToriiGate-v0.3"]
 model_path = "Minthy/ToriiGate-v0.3"
@@ -193,29 +180,24 @@ estimated_size_gb = 37.828
 [deepdanbooru-v3-20211112-sgd-e28]
 model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v3-20211112-sgd-e28/deepdanbooru-v3-20211112-sgd-e28.zip"
 class = "DeepDanbooruTagger"
-device = "cuda"
 estimated_size_gb = 0.723
 
 [deepdanbooru-v4-20200814-sgd-e30]
 model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v4-20200814-sgd-e30/deepdanbooru-v4-20200814-sgd-e30.zip"
 class = "DeepDanbooruTagger"
-device = "cuda"
 estimated_size_gb = 0.327
 
 [deepdanbooru-v3-20200915-sgd-e30]
 model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v3-20200915-sgd-e30/deepdanbooru-v3-20200915-sgd-e30.zip"
 class = "DeepDanbooruTagger"
-device = "cuda"
 estimated_size_gb = 0.698
 
 [deepdanbooru-v3-20200101-sgd-e30]
 model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v3-20200101-sgd-e30/deepdanbooru-v3-20200101-sgd-e30.zip"
 class = "DeepDanbooruTagger"
-device = "cuda"
 estimated_size_gb = 0.687
 
 [deepdanbooru-v1-20191108-sgd-e30]
 model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v1-20191108-sgd-e30/deepdanbooru-v1-20191108-sgd-e30.zip"
 class = "DeepDanbooruTagger"
-device = "cuda"
 estimated_size_gb = 0.66

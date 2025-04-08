@@ -1,5 +1,15 @@
 ---
 description: 
+globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: 
 globs: image-annotator-lib/**/*
 alwaysApply: false
 ---
@@ -107,7 +117,8 @@ image-annotator-lib/
 - **`BaseAnnotator` (`core/base.py`)**: 共通抽象基底クラス。
 - **`ModelLoad` (`core/model_factory.py`)**: モデルロード/キャッシュ管理。
 - **`core/registry.py`**: モデルクラス登録モジュール。
-- **`core/utils.py`**: 共通ユーティリティ (設定読み込み等)。
+- **`core/config.py`**: 設定管理クラス `ModelConfigRegistry` (設定ファイル全体の読み込み・保持、設定値へのアクセス提供) と共有インスタンス `config_registry`、関連定数を定義。
+- **`core/utils.py`**: ロギング設定 (`setup_logger`) および汎用ユーティリティ (ファイルI/O、ネットワーク、画像処理など)。
 - **各種 Tagger/Scorer 実装クラス (`models/`)**: `BaseAnnotator` 継承クラス。
 - **共通例外クラス (`exceptions/errors.py`)**: `AnnotatorError` など。
 

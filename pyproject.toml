@@ -26,8 +26,9 @@ dev = [
     "pytest-clarity>=1.0.1",
     "pytest-cov>=4.1.0",
     "pytest-xdist>=3.5.0",
-    "pytest-playwright",     # Moved from scorer dependencies
-    "toml",                  # TOML ファイル書き込み用に追加
+    "pytest-playwright",
+    "pytest-mock",
+    "toml",
 
     # Code Quality
     "mypy>=1.8.0",
@@ -35,9 +36,10 @@ dev = [
     "types-requests>=2.32.0",
     "types-Pillow",
     "types-toml",
-    "types-psutil",           # psutil の型スタブを追加
+    "types-psutil",
 
     # Utilities
+    "tensorflow",
     "psutil",
 ]
 

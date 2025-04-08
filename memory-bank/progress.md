@@ -5,10 +5,10 @@
 ファイルパスの指定ミスを防ぐため、主要なパス情報を以下に記載します。
 
 - **プロジェクトルート:** `h:/Git/dataset-tag-editor-standalone-1`
-    - すべてのファイル操作 (read_file, write_to_file など) は、原則としてこのディレクトリからの相対パスで指定します。
+  - すべてのファイル操作 (read_file, write_to_file など) は、原則としてこのディレクトリからの相対パスで指定します。
 - **`image-annotator-lib` パッケージルート:** `image-annotator-lib/src/image_annotator_lib`
-    - ライブラリ内部のモジュールを参照・編集する際の基点となります。
-    - 例: `image-annotator-lib/src/image_annotator_lib/core/base.py`
+  - ライブラリ内部のモジュールを参照・編集する際の基点となります。
+  - 例: `image-annotator-lib/src/image_annotator_lib/core/base.py`
 
 ---
 
@@ -46,38 +46,44 @@
 ### 残りの作業と確認事項
 
 1.  **テスト拡充**:
-    *   **単体テスト**:
-        *   `ModelLoad` のキャッシュ戦略（LRU、CPU退避、メモリ逼迫時の挙動）を検証するテストケースを追加。
-        *   各フレームワーク別ローダー (`TransformersLoader`, `ONNXLoader` 等) の正常系・異常系テストを追加。
-        *   `registry.py` の動的クラス検出・登録ロジックのテストを追加。
-        *   各具象モデルクラス (`models/` 配下、`ImageRewardScorer` を除く) の `_generate_tags` 等の主要メソッドに対するテストを追加・拡充。
-    *   **結合テスト (BDD含む)**:
-        *   `api.annotate` 関数のテストシナリオを拡充 (複数モデル同時実行、pHash生成失敗ケース、エラーハンドリングなど)。
-        *   各モデルのエラーハンドリング (特に OOM) が `annotate` 関数レベルで適切に処理され、結果に反映されるか検証するシナリオを追加。
-        *   設定ファイル (`annotator_config.toml`) の様々なパターン (オプション指定有無など) に対するテストを追加。
-    *   **カバレッジ**: `pytest --cov` を実行し、テストカバレッジを確認・向上させる。
+
+    - **単体テスト**:
+      - `ModelLoad` のキャッシュ戦略(LRU、CPU 退避、メモリ逼迫時の挙動)を検証するテストケースを追加。
+      - 各フレームワーク別ローダー (`TransformersLoader`, `ONNXLoader` 等) の正常系・異常系テストを追加。
+      - `registry.py` の動的クラス検出・登録ロジックのテストを追加。
+      - 各具象モデルクラス (`models/` 配下、`ImageRewardScorer` を除く) の `_generate_tags` 等の主要メソッドに対するテストを追加・拡充。
+    - **結合テスト (BDD 含む)**:
+      - `api.annotate` 関数のテストシナリオを拡充 (複数モデル同時実行、pHash 生成失敗ケース、エラーハンドリングなど)。
+      - 各モデルのエラーハンドリング (特に OOM) が `annotate` 関数レベルで適切に処理され、結果に反映されるか検証するシナリオを追加。
+      - 設定ファイル (`annotator_config.toml`) の様々なパターン (オプション指定有無など) に対するテストを追加。
+    - **カバレッジ**: `pytest --cov` を実行し、テストカバレッジを確認・向上させる。
 
 2.  **モデル実装の最終確認**:
-    *   各具象モデルクラス (`models/` 配下、`ImageRewardScorer` を除く) のデフォルトパラメータ（閾値など）を確認し、必要であれば調整・ドキュメント (`REFERENCE/models.md` 等) に追記。
-    *   特に `CafePredictor` や `AestheticShadowV1` など、Scorer系のモデルの出力形式 (`tags` または `formatted_output`) が `AnnotationResult` の定義と整合しているか再確認。
+
+    - 各具象モデルクラス (`models/` 配下、`ImageRewardScorer` を除く) のデフォルトパラメータ(閾値など)を確認し、必要であれば調整・ドキュメント (`REFERENCE/models.md` 等) に追記。
+    - 特に `CafePredictor` や `AestheticShadowV1` など、Scorer 系のモデルの出力形式 (`tags` または `formatted_output`) が `AnnotationResult` の定義と整合しているか再確認。
 
 3.  **ドキュメント最終化**:
-    *   `docs_image-annotator-lib` 内の各ドキュメント (APIリファレンス、設定ガイド、モデル説明など) の内容を、最新のコード実装と完全に一致するように最終レビュー。
-    *   全公開クラス・メソッド・関数の Docstring の網羅性と正確性を確認・修正。
-    *   必要に応じてアーキテクチャ図などを `EXPLANATION/` に追加・更新。
-    *   日本語 README (`README-JP.md`) を作成または更新。
+
+    - `docs_image-annotator-lib` 内の各ドキュメント (API リファレンス、設定ガイド、モデル説明など) の内容を、最新のコード実装と完全に一致するように最終レビュー。
+    - 全公開クラス・メソッド・関数の Docstring の網羅性と正確性を確認・修正。
+    - 必要に応じてアーキテクチャ図などを `EXPLANATION/` に追加・更新。
+    - 日本語 README (`README-JP.md`) を作成または更新。
 
 4.  **依存関係の最終整理**:
-    *   `image-annotator-lib/pyproject.toml` の依存関係 (`dependencies`, `dev-dependencies`) を最終確認し、不要なライブラリがあれば削除。バージョン指定が適切か確認。
+
+    - `image-annotator-lib/pyproject.toml` の依存関係 (`dependencies`, `dev-dependencies`) を最終確認し、不要なライブラリがあれば削除。バージョン指定が適切か確認。
 
 5.  **実環境での動作確認**:
-    *   ライブラリを実際に使用する環境 (例: stable-diffusion-webui 拡張機能) で `annotate` 関数を呼び出し、主要なモデルが問題なく動作するか確認。パフォーマンスやメモリ使用量についても簡易的に確認。
+
+    - ライブラリを実際に使用する環境 (例: stable-diffusion-webui 拡張機能) で `annotate` 関数を呼び出し、主要なモデルが問題なく動作するか確認。パフォーマンスやメモリ使用量についても簡易的に確認。
 
 6.  **静的解析エラーの完全解消**:
-    *   `ruff check` および `mypy` を実行し、報告されるエラーや警告が完全に解消されていることを確認。(# type: ignore や # noqa が残っていないか確認)
+
+    - `ruff check` および `mypy` を実行し、報告されるエラーや警告が完全に解消されていることを確認。(# type: ignore や # noqa が残っていないか確認)
 
 7.  **設定ファイル (`annotator_config.toml`) の構造改善検討 (TODO)**:
-    *   現在の `annotator_config.toml` の構造は読みにくいため、将来的に改善を検討する。具体的な改善案については別途相談する。
+    - 現在の `annotator_config.toml` の構造は読みにくいため、将来的に改善を検討する。具体的な改善案については別途相談する。
 
 # 進捗状況
 
@@ -86,7 +92,7 @@
 ### ModelLoad 改善 (2024-04-02 -> 2025-04-05)
 
 - [x] 設計変更の決定と文書化
-- [x] 基底ローダークラス（BaseModelLoader）の実装
+- [x] 基底ローダークラス(BaseModelLoader)の実装
 - [x] 具象ローダークラスの実装
   - [x] TransformersLoader
   - [x] ONNXLoader
@@ -109,11 +115,12 @@
 ## 完了した作業
 
 ### Memory Bank 更新 (2025-04-05)
+
 - `activeContext.md` を整理されたドキュメントに基づいて更新。`ModelLoad` の二階層構造に関する情報を追記。
 - `progress.md` にパス情報を追記。
 - `productContext.md` にパス情報と重要なコーディングルールを追記。
 - `decisionLog.md` にドキュメント整理とルール明確化に関する決定事項を追記。
-- `progress.md` のTODOリストを具体化し更新。
+- `progress.md` の TODO リストを具体化し更新。
 
 ### ModelLoad 設計 (2024-04-02)
 

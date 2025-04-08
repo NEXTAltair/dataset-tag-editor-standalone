@@ -3,6 +3,11 @@ description:
 globs: 
 alwaysApply: true
 ---
+---
+description:
+globs: "*.py", "*.feature", "*.md", "*.mdc", "*.toml"
+version: "2.7.1"
+---
 
 # プロジェクト・ドキュメンテーションルール (AI 向け指示)
 
@@ -15,7 +20,7 @@ alwaysApply: true
 - **目的:** 画像評価、タグ付け、関連処理を行う統合ライブラリとして機能させること。
 - **管理:** `pyproject.toml` で管理し、`uv pip install -e .[dev]` でインストール可能とすること。
 - **参照:** コーディング時は `image-annotator-lib_docs` ディレクトリのドキュメントを参照すること。
-- **更新:** 処理システムの変更時は関連ドキュメントを更新し､`docs_image-annotator-lib\EXPLANATION\design_decisions.md` にその詳細を残すこと
+- **更新:** 処理システムの変更時は関連ドキュメントを更新し､`docs_image-annotator-lib` と `memory-bank` にその詳細を残すこと
 
 ## ドキュメンテーション
 
@@ -31,7 +36,7 @@ alwaysApply: true
     - `XXX`: 特別な注意や再考が必要な箇所
     - `[ ]`: 未完了のタスク
     - `[x]`: 完了したタスク
-- **ドキュメント更新:** コード変更時は、関連するドキュメント（docstring, `image-annotator-lib_docs` 内ファイル等）も適切に**更新すること**。
+- **ドキュメント更新:** コード変更時は、関連するドキュメント（docstring, `docs_image-annotator-lib` と `memory-bank` 内ファイル等）も適切に**更新すること**。
 
 ## 開発プロセス
 

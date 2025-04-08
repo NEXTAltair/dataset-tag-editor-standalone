@@ -5,8 +5,8 @@ alwaysApply: true
 ---
 ---
 description: "Coding rules and development environment setup for Python projects"
-globs: "*.py"
-version: "2.6.0"
+globs: "*.py", "*.feature", "*.md", "*.mdc", "*.toml"
+version: "2.7.0"
 ---
 # コーディングルール (AI向け指示)
 
@@ -18,6 +18,7 @@ AI はコードを生成・編集する際、以下のルールに**厳守**す�
 - **YAGNI原則:** 「後で使うかもしれない」機能は実装せず、現時点で必要な最小限の機能のみを実装すること。
 - **半角文字:** コード、コメント、ドキュメント内では、**絶対に全角英数字や全角記号を使用しないこと**。記号は原則として半角を使用すること。
 - **参照:** コーディング時は `image-annotator-lib_docs` ディレクトリのドキュメントを参照すること。
+- **変更の記録** 既存の設計を変更した場合は `image-annotator-lib_docs` `memory-bank` 内の記述を確認しその内容と理由を記載すること｡
 
 ## 開発環境
 
