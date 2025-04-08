@@ -2,7 +2,7 @@ import gc
 import logging
 import time
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar
 
 import onnxruntime as ort
 import psutil
@@ -13,6 +13,7 @@ from transformers import AutoModelForVision2Seq, AutoProcessor, CLIPModel, CLIPP
 
 from ..exceptions.errors import OutOfMemoryError
 from . import utils
+from .config import config_registry
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +36,18 @@ class BaseModelLoader:
         if self.model_name in self._MODEL_SIZES:
             return self._MODEL_SIZES[self.model_name]
 
-        model_configs = utils.load_model_config()
-        if self.model_name in model_configs and "estimated_size_gb" in model_configs[self.model_name]:
-            size_mb = float(model_configs[self.model_name]["estimated_size_gb"]) * 1024
+        # config_registry から estimated_size_gb を取得
+        try:
+            estimated_size_gb = config_registry.get(self.model_name, "estimated_size_gb")
+
+            size_mb = float(estimated_size_gb) * 1024
             self._MODEL_SIZES[self.model_name] = size_mb
             self.logger.debug(
                 f"モデル '{self.model_name}' のサイズをキャッシュから読み込みました: {size_mb / 1024:.3f}GB"
             )
             return size_mb
-        return 0.0
+        except Exception:
+            return 0.0
 
     def get_max_cache_size(self) -> float:
         """システムの最大メモリに基づいてキャッシュサイズを計算"""
@@ -77,7 +81,7 @@ class BaseModelLoader:
         models_by_age = sorted(self._MODEL_LAST_USED.items(), key=lambda x: x[1])
 
         for old_model_name, last_used in models_by_age:
-            # --- 修正点：ループ条件チェックで最新のメモリ使用量を見る ---
+            # --- 修正点:ループ条件チェックで最新のメモリ使用量を見る ---
             current_cache_size = sum(self._MEMORY_USAGE.values())  # ★毎回ここで最新の値を取得
             if current_cache_size + model_size <= max_cache:
                 self.logger.info("必要なキャッシュ容量が確保されたため、解放処理を停止します。")
@@ -95,7 +99,7 @@ class BaseModelLoader:
                 f"解放メモリ: {freed_memory:.1f}MB)"
             )
             self.release_model(old_model_name)
-            # current_cache_size の更新は不要（次のループ冒頭で再計算するため）
+            # current_cache_size の更新は不要(次のループ冒頭で再計算するため)
 
         # ループ終了後のチェックで最新の値を使うように修正
         final_cache_size = sum(self._MEMORY_USAGE.values())
@@ -138,12 +142,13 @@ class TransformersLoader(BaseModelLoader):
                 f"メモリチェック ({self.model_name}): 必要={required_memory_gb:.3f}GB, 利用可能={available_memory_gb:.3f}GB"
             )
             if available_memory_bytes < required_memory_bytes:
-                error_msg = (
-                    f"メモリ不足: モデル '{self.model_name}' ({required_memory_gb:.3f}GB) をロードできません。"
-                    f"利用可能なメモリ ({available_memory_gb:.3f}GB) が不足しています。"
+                error_detail = (
+                    f"モデル '{self.model_name}' ({required_memory_gb:.3f}GB) のロードに失敗しました。"
+                    f"利用可能なシステムメモリ ({available_memory_gb:.3f}GB) が不足しています。"
                 )
+                error_msg = f"メモリ不足エラー: {error_detail}"
                 logger.error(error_msg)
-                raise OutOfMemoryError(error_msg)
+                raise OutOfMemoryError(error_detail)
         # --- メモリ制約チェック完了 ---
 
         if self.model_name in self._MODEL_STATES:
@@ -162,15 +167,16 @@ class TransformersLoader(BaseModelLoader):
             self._MODEL_STATES[self.model_name] = f"on_{self.device}"
             return components
 
-        except torch.cuda.OutOfMemoryError as e:
-            error_msg = f"CUDAメモリ不足: '{self.model_name}' (デバイス: {self.device})"
-            logger.error(f"{error_msg}\n元のエラー: {e}")
-            if self.device.startswith("cuda"):
+        except (torch.cuda.OutOfMemoryError, MemoryError, OSError) as e:
+            error_detail = f"モデル '{self.model_name}' のロード中にメモリ不足が発生しました (デバイス: {self.device})。詳細: {e}"
+            error_msg = f"メモリ不足エラー: {error_detail}"
+            logger.error(error_msg)
+            if isinstance(e, torch.cuda.OutOfMemoryError) and self.device.startswith("cuda"):
                 try:
                     logger.error(torch.cuda.memory_summary(device=self.device))
                 except Exception as mem_e:
-                    logger.error(f"メモリ情報取得失敗: {mem_e}")
-            raise OutOfMemoryError(error_msg) from e
+                    logger.error(f"CUDAメモリ情報取得失敗: {mem_e}")
+            raise OutOfMemoryError(error_detail) from e
 
     def _calculate_transformer_size(self, model: torch.nn.Module) -> float:
         """Transformerモデルのメモリ使用量を計算(MB単位)"""
@@ -208,10 +214,16 @@ class TransformersPipelineLoader(BaseModelLoader):
             self._MODEL_STATES[self.model_name] = f"on_{self.device}"
             return components
 
-        except torch.cuda.OutOfMemoryError as e:
-            error_msg = f"CUDAメモリ不足: '{self.model_name}' (デバイス: {self.device})"
-            logger.error(f"{error_msg}\n元のエラー: {e}")
-            raise OutOfMemoryError(error_msg) from e
+        except (torch.cuda.OutOfMemoryError, MemoryError, OSError) as e:
+            error_detail = f"モデル '{self.model_name}' (Pipeline) のロード中にメモリ不足が発生しました (デバイス: {self.device})。詳細: {e}"
+            error_msg = f"メモリ不足エラー: {error_detail}"
+            logger.error(error_msg)
+            if isinstance(e, torch.cuda.OutOfMemoryError) and self.device.startswith("cuda"):
+                 try:
+                     logger.error(torch.cuda.memory_summary(device=self.device))
+                 except Exception as mem_e:
+                     logger.error(f"CUDAメモリ情報取得失敗: {mem_e}")
+            raise OutOfMemoryError(error_detail) from e
 
     def _calculate_transformer_size(self, model: torch.nn.Module) -> float:
         """Transformerモデルのメモリ使用量を計算(MB単位)"""
@@ -243,12 +255,20 @@ class ONNXLoader(BaseModelLoader):
 
             return components
 
-        except Exception as e:
-            if "Failed to allocate memory" in str(e) or "CUDA error" in str(e):
-                error_msg = f"ONNXランタイムメモリエラー: '{self.model_name}'"
-                logger.error(f"{error_msg}\n元のエラー: {e}")
-                raise OutOfMemoryError(error_msg) from e
-            else:
+        except (MemoryError, OSError, Exception) as e: # MemoryError, OSError を追加し、汎用 Exception を最後に
+            # メモリ関連のエラーか判定
+            is_memory_error = False
+            if isinstance(e, (MemoryError, OSError)):
+                is_memory_error = True
+            elif isinstance(e, Exception) and ("Failed to allocate memory" in str(e) or "CUDA error" in str(e)):
+                 is_memory_error = True
+
+            if is_memory_error:
+                error_detail = f"モデル '{self.model_name}' (ONNX) のロード中にメモリ不足が発生しました。詳細: {e}"
+                error_msg = f"メモリ不足エラー: {error_detail}"
+                logger.error(error_msg)
+                raise OutOfMemoryError(error_detail) from e
+            else: # メモリ関連以外の予期せぬエラー
                 logger.error(f"ONNXモデルロード中に予期せぬエラー: {e}")
                 raise
 
@@ -256,11 +276,7 @@ class ONNXLoader(BaseModelLoader):
 class TensorFlowLoader(BaseModelLoader):
     """TensorFlowモデルのローダー"""
 
-    def load_components(
-        self,
-        model_path: str,
-        model_format: Literal["h5", "saved_model", "pb"] = "h5",
-    ) -> dict[str, Any]:
+    def load_components(self, model_path: str, model_format: str) -> dict[str, Any]:
         """TensorFlowモデルをロード"""
         try:
             model_dir = utils.load_file(model_path)
@@ -348,11 +364,11 @@ class ModelLoad:
     二階層のローダー構造により、各モデルタイプの特性に応じた効率的なモデル管理を実現します。
     """
 
-    _MODEL_STATES: dict[str, str] = {}
-    _MEMORY_USAGE: dict[str, float] = {}
-    _MODEL_LAST_USED: dict[str, float] = {}
-    _CACHE_RATIO = 0.5
-    _MODEL_SIZES: dict[str, float] = {}
+    _MODEL_STATES: ClassVar[dict[str, str]] = {}
+    _MEMORY_USAGE: ClassVar[dict[str, float]] = {}
+    _MODEL_LAST_USED: ClassVar[dict[str, float]] = {}
+    _CACHE_RATIO: ClassVar[float] = 0.5
+    _MODEL_SIZES: ClassVar[dict[str, float]] = {}
     logger = logging.getLogger(__name__)
 
     @staticmethod
@@ -436,16 +452,16 @@ class ModelLoad:
 
             return components
 
-        except torch.cuda.OutOfMemoryError as e:
-            error_message = f"CUDAメモリ不足: モデル '{model_name}' の復元中 (デバイス: {device})"
-            ModelLoad.logger.error(error_message)
-            ModelLoad.logger.error(f"元のPyTorchエラー: {e}")
-            try:
-                if device.startswith("cuda") and torch.cuda.is_available():
+        except (torch.cuda.OutOfMemoryError, MemoryError, OSError) as e:
+            error_detail = f"モデル '{model_name}' の CUDA デバイス '{device}' への復元中にメモリ不足が発生しました。詳細: {e}"
+            error_msg = f"メモリ不足エラー: {error_detail}"
+            ModelLoad.logger.error(error_msg)
+            if isinstance(e, torch.cuda.OutOfMemoryError) and device.startswith("cuda") and torch.cuda.is_available():
+                try:
                     ModelLoad.logger.error(torch.cuda.memory_summary(device=device))
-            except Exception as mem_e:
-                ModelLoad.logger.error(f"CUDAメモリサマリーの取得に失敗: {mem_e}")
-            raise OutOfMemoryError(error_message) from e
+                except Exception as mem_e:
+                    ModelLoad.logger.error(f"CUDAメモリサマリーの取得に失敗: {mem_e}")
+            raise OutOfMemoryError(error_detail) from e
 
     @staticmethod
     def release_model(model_name: str) -> None:
@@ -504,7 +520,7 @@ class ModelLoad:
         model_name: str,
         model_path: str,
         device: str,
-        model_format: Literal["h5", "saved_model", "pb"] = "h5",
+        model_format: str,
     ) -> dict[str, Any]:
         """TensorFlowモデルをロード"""
         loader = TensorFlowLoader(model_name, device)

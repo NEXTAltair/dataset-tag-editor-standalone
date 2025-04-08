@@ -1,33 +1,25 @@
 import hashlib
 import logging
 import zipfile
-from functools import lru_cache
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 import huggingface_hub
 import imagehash
 import requests
-import toml
 from PIL import Image
 from tqdm import tqdm
 
-DEFAULT_PATHS = {
-    "config_toml": Path("config") / "annotator_config.toml",
-    "log_file": Path("logs") / "image-annotator-lib.log",
-    "cache_dir": Path("models"),
-}
-
-DEFAULT_TIMEOUT = 30
-WD_MODEL_FILENAME = "model.onnx"
-WD_LABEL_FILENAME = "selected_tags.csv"
+# --- ローカルインポート ---
+from .config import DEFAULT_PATHS, DEFAULT_TIMEOUT, WD_LABEL_FILENAME, WD_MODEL_FILENAME
 
 
-def setup_logger(
-    name: str, level: int = logging.INFO, log_file: Path = DEFAULT_PATHS["log_file"]
-) -> logging.Logger:
+def setup_logger(name: str, level: int = logging.INFO, log_file: Path | None = None) -> logging.Logger:
     """指定された名前でロガーを初期化します。"""
+    # log_file が None の場合はデフォルトパスを使用
+    if log_file is None:
+        log_file = DEFAULT_PATHS["log_file"]
+
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
@@ -97,7 +89,7 @@ def _perform_download(url: str, target_path: Path) -> None:
                     pbar.update(len(chunk))
 
 
-def _download_from_url(url: str, cache_dir: Path = DEFAULT_PATHS["cache_dir"]) -> Path:
+def _download_from_url(url: str, cache_dir: Path) -> Path:
     """URLからファイルをダウンロードします。"""
     cache_dir.mkdir(exist_ok=True, parents=True)
     is_cached, local_path = _is_cached(url, cache_dir)
@@ -106,9 +98,12 @@ def _download_from_url(url: str, cache_dir: Path = DEFAULT_PATHS["cache_dir"]) -
     return local_path.resolve()
 
 
-@lru_cache(maxsize=128)
-def get_file_path(path_or_url: str, cache_dir: Path = DEFAULT_PATHS["cache_dir"]) -> Path:
+def get_file_path(path_or_url: str, cache_dir: Path | None = None) -> Path:
     """パスまたはURLからローカルファイルパスを取得します。"""
+    # cache_dir が None の場合はデフォルトパスを使用
+    if cache_dir is None:
+        cache_dir = DEFAULT_PATHS["cache_dir"]
+
     parsed = urlparse(path_or_url)
     if parsed.scheme in ("http", "https"):
         return _download_from_url(path_or_url, cache_dir)
@@ -147,8 +142,9 @@ def extract_zip(zip_path: Path) -> Path:
         raise RuntimeError(f"ZIPファイルの解凍に失敗しました: {e}") from e
 
 
-def load_file(path_or_url: str, cache_dir: Path = DEFAULT_PATHS["cache_dir"]) -> Path:
+def load_file(path_or_url: str) -> Path:
     """ファイルを取得し、ローカルパスを返します。"""
+    cache_dir = DEFAULT_PATHS["cache_dir"]
     try:
         file_path = get_file_path(path_or_url, cache_dir)
         if file_path.suffix.lower() == ".zip":
@@ -185,39 +181,3 @@ def download_onnx_tagger_model(model_repo: str) -> tuple[Path, Path]:
     )
 
     return Path(csv_path), Path(model_path)
-
-
-@lru_cache
-def load_model_config(config_path: Path = DEFAULT_PATHS["config_toml"]) -> dict[str, dict[str, Any]]:
-    """モデル設定を読み込みます。"""
-    config_data = toml.load(config_path)
-    if not isinstance(config_data, dict):
-        raise TypeError("構成データは辞書である必要があります")
-    return dict(config_data)
-
-
-def save_model_size(
-    model_name: str, size_mb: float, config_path: Path = DEFAULT_PATHS["config_toml"]
-) -> None:
-    """モデルのサイズ推定値を保存します。"""
-    try:
-        size_gb = size_mb / 1024
-
-        if config_path.exists():
-            config_data = toml.load(config_path)
-        else:
-            logger.error(f"設定ファイル {config_path} が見つかりません")
-            return
-
-        if model_name not in config_data:
-            logger.warning(f"モデル '{model_name}' の設定が見つかりません")
-            return
-
-        config_data[model_name]["estimated_size_gb"] = round(size_gb, 3)
-
-        with open(config_path, "w") as f:
-            toml.dump(config_data, f)
-
-        logger.debug(f"モデル '{model_name}' の推定サイズ ({size_gb:.3f}GB) を保存しました")
-    except Exception as e:
-        logger.error(f"モデルサイズの保存に失敗しました: {e}")

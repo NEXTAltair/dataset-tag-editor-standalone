@@ -14,7 +14,7 @@ import psutil
 import torch
 from image_annotator_lib.api import (
     _MODEL_INSTANCE_REGISTRY,
-    AnnotationResultDict,
+    PHashAnnotationResults,
     annotate,
     get_annotator_instance,
 )
@@ -23,11 +23,11 @@ from image_annotator_lib.core.registry import (
     get_cls_obj_registry,
     list_available_annotators,
 )
-from image_annotator_lib.core.utils import calculate_phash  # type: ignore
+from image_annotator_lib.core.utils import calculate_phash
 from PIL import Image
 from pytest_bdd import given, scenarios, then, when
 
-scenarios("../../tests/features/integration/scorer.feature")
+scenarios("../features/integration/scorer.feature")
 
 
 # resourcesディレクトリのパス
@@ -74,8 +74,8 @@ def given_valid_single_image() -> list[Image.Image]:
 
 @given("スコアラーがインスタンス化されている", target_fixture="model_for_scoring")
 def given_scorer_instances(scorer_registry: dict[str, Any]) -> list[str]:
-    # テスト用に単一のモデル名を返す
-    return [next(iter(scorer_registry.keys()))]
+    # テスト用にランダムに1つのモデル名を選択して返す
+    return [random.choice(list(scorer_registry.keys()))]
 
 
 @given("複数の有効な画像ファイルが準備されている", target_fixture="valid_images")
@@ -88,10 +88,10 @@ def given_multiple_models(scorer_registry: dict[str, ModelClass]) -> list[str]:
     # 利用可能なモデル名のリスト
     available_models = list(scorer_registry.keys())
 
-    # モデルが3つ以上ある場合は、ランダムに3つを選択
+    # モデルが5つ以上ある場合は、ランダムに5つを選択
     # そうでない場合は全モデルを使用
-    if len(available_models) > 3:
-        selected_models = random.sample(available_models, 3)
+    if len(available_models) > 5:
+        selected_models = random.sample(available_models, 5)
     else:
         selected_models = available_models
 
@@ -142,7 +142,7 @@ def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict[str
 
 
 @when("この画像をスコアリングする", target_fixture="scoring_results")
-def when_score_image(valid_image: list[Image.Image], model_for_scoring: list[str]) -> AnnotationResultDict:
+def when_score_image(valid_image: list[Image.Image], model_for_scoring: list[str]) -> PHashAnnotationResults:
     # 単一のモデルで評価する
     return annotate(valid_image, model_for_scoring)
 
@@ -150,7 +150,7 @@ def when_score_image(valid_image: list[Image.Image], model_for_scoring: list[str
 @when("これらの画像を一括評価する", target_fixture="scoring_results")
 def when_score_images(
     valid_images: list[Image.Image], model_for_scoring: list[str]
-) -> AnnotationResultDict:
+) -> PHashAnnotationResults:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_images, model_for_scoring)
 
@@ -158,7 +158,7 @@ def when_score_images(
 @when("この画像を複数のモデルで評価する", target_fixture="scoring_results")
 def when_score_image_multiple_models(
     valid_image: list[Image.Image], multiple_models: list[str]
-) -> AnnotationResultDict:
+) -> PHashAnnotationResults:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_image, multiple_models)
 
@@ -166,7 +166,7 @@ def when_score_image_multiple_models(
 @when("これらの画像を複数のモデルで一括評価する", target_fixture="scoring_results")
 def when_score_images_multiple_models(
     valid_images: list[Image.Image], multiple_models: list[str]
-) -> AnnotationResultDict:
+) -> PHashAnnotationResults:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_images, multiple_models)
 
@@ -274,7 +274,7 @@ def then_cached_model_instance_returned(reused_instance: dict[str, Any]) -> None
 
 @then("画像に対するモデルの処理結果が返される")
 def then_valid_score_returned_single_image(
-    scoring_results: AnnotationResultDict,
+    scoring_results: PHashAnnotationResults,
     valid_image: list[Image.Image],
 ) -> None:
     verify_scoring_results(scoring_results, valid_image, expect_multiple_models=False)
@@ -282,7 +282,7 @@ def then_valid_score_returned_single_image(
 
 @then("各画像に対するモデルの処理結果が返される")
 def then_valid_score_returned_multiple_images(
-    scoring_results: AnnotationResultDict,
+    scoring_results: PHashAnnotationResults,
     valid_images: list[Image.Image],
 ) -> None:
     verify_scoring_results(scoring_results, valid_images, expect_multiple_models=False)
@@ -290,7 +290,7 @@ def then_valid_score_returned_multiple_images(
 
 @then("画像に対する各モデルの処理結果が返される")
 def then_valid_score_returned_multiple_models(
-    scoring_results: AnnotationResultDict,
+    scoring_results: PHashAnnotationResults,
     valid_image: list[Image.Image],
 ) -> None:
     verify_scoring_results(scoring_results, valid_image, expect_multiple_models=True)
@@ -298,7 +298,7 @@ def then_valid_score_returned_multiple_models(
 
 @then("各画像に対する各モデルの処理結果が返される")
 def then_valid_score_returned_multiple_models_multiple_images(
-    scoring_results: AnnotationResultDict,
+    scoring_results: PHashAnnotationResults,
     valid_images: list[Image.Image],
 ) -> None:
     verify_scoring_results(scoring_results, valid_images, expect_multiple_models=True)
@@ -306,7 +306,7 @@ def then_valid_score_returned_multiple_models_multiple_images(
 
 # 共通の検証ロジック
 def verify_scoring_results(
-    scoring_results: AnnotationResultDict,
+    scoring_results: PHashAnnotationResults,
     images: list[Image.Image],
     expect_multiple_models: bool = False,
 ) -> None:

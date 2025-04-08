@@ -6,7 +6,7 @@ from types import ModuleType
 from typing import TypeVar
 
 from .base import BaseAnnotator
-from .utils import load_model_config
+from .config import config_registry
 
 T = TypeVar("T", bound=BaseAnnotator)
 ModelClass = type[BaseAnnotator]
@@ -129,7 +129,9 @@ def _register_models(
     registered_count = 0  # 変数を初期化
 
     try:
-        config = load_model_config()
+        # config_registry からロード済みの設定データを取得
+        config = config_registry.get_all_config()
+
         if not config:
             logger.warning("モデル設定が空か、ロードに失敗しました。モデルは登録されません。")
             return
@@ -215,7 +217,7 @@ def register_annotators() -> dict[str, ModelClass]:
 
 
 # TODO[DESIGN]: レジストリの責務分離を検討
-# - 現状: クラス登録とインスタンス管理が分離している（_MODEL_CLASS_OBJ_REGISTRYとapi.pyの_MODEL_INSTANCE_REGISTRY）
+# - 現状: クラス登録とインスタンス管理が分離している(_MODEL_CLASS_OBJ_REGISTRYとapi.pyの_MODEL_INSTANCE_REGISTRY)
 # - 課題:
 #   1. レジストリ関連の機能が複数箇所に分散
 #   2. get_cls_obj_registry()が内部実装を直接露出

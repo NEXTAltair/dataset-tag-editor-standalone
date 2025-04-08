@@ -1,19 +1,21 @@
 import logging
 import time
 from pathlib import Path
-import onnxruntime as ort  # type: ignore
-import tensorflow as tf  # type: ignore
+import onnxruntime as ort
+import tensorflow as tf
+import tensorflow.keras as keras
 import torch
 from unittest.mock import MagicMock
 import pytest
+from pytest_mock import MockerFixture
 from pytest_bdd import scenarios, given, when, then, parsers
 from transformers import (
     PreTrainedModel,
     Pipeline,
     CLIPProcessor,
     CLIPModel,
-)  # type: ignore
-from transformers.processing_utils import ProcessorMixin  # type: ignore
+)
+from transformers.processing_utils import ProcessorMixin
 
 from image_annotator_lib.core.model_factory import (
     ModelLoad,
@@ -21,7 +23,7 @@ from image_annotator_lib.core.model_factory import (
     Classifier,
 )
 from image_annotator_lib.exceptions.errors import OutOfMemoryError
-from image_annotator_lib.core import utils
+from image_annotator_lib.core.config import config_registry # config_registry をインポート
 
 # --- モジュールレベル変数 ---
 # メモリ不足テストの結果を格納するための変数 (再度追加)
@@ -77,6 +79,7 @@ def given_pipeline_model_settings() -> dict:
     """Pipelineモデルの設定情報を返す"""
     logging.info("Given: Pipeline model settings")
     settings = {
+        "task": "image-classification", # task 引数を追加
         "model_name": "aesthetic_shadow_v1",
         "model_path": "shadowlilac/aesthetic-shadow",
     }
@@ -187,7 +190,7 @@ def given_model_cached_on_cpu(
 
 
 @given("複数のモデルがメモリにロードされている")
-def given_multiple_models_loaded():
+def given_multiple_models_loaded(mocker: MockerFixture): # mocker フィクスチャを追加
     """複数のモデルがメモリにロードされている状態を設定 (CUDA優先, サイズ調整)"""
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # VRAM(10GB仮定)を圧迫し、解放が必要になるようにサイズ調整
@@ -200,8 +203,13 @@ def given_multiple_models_loaded():
     ModelLoad._MODEL_STATES.clear()
     ModelLoad._MEMORY_USAGE.clear()
     ModelLoad._MODEL_LAST_USED.clear()
-    # テスト用に最大キャッシュサイズを設定 (必要に応じて調整)
-    ModelLoad._MAX_CACHE_SIZE_GB = 10.0
+    # --- 修正点 ---
+    # ModelLoad.get_max_cache_size をモックして、テスト用に固定のキャッシュサイズ(10GB = 10240MB)を返すように設定
+    mocker.patch(
+        "image_annotator_lib.core.model_factory.ModelLoad.get_max_cache_size",
+        return_value=10.0 * 1024, # MB単位で返す
+    )
+    # 存在しない属性への代入を削除 (上のブロックで削除済み)
 
     for model_name, dev, size_mb in models:
         ModelLoad._MODEL_STATES[model_name] = f"on_{dev}"
@@ -259,6 +267,7 @@ def when_transformers_loader_executed(transformers_model_info: dict) -> dict:
 # model_and_device_info フィクスチャへの依存を削除
 def when_transformers_pipeline_loader_executed(pipeline_settings: dict) -> dict:
     """ModelLoad を使って Transformers Pipeline コンポーネントをロード"""
+    task = pipeline_settings["task"] # task を取得 (この行を追加)
     model_name = "aesthetic_shadow_v1"  # デフォルトのモデル名
     device = "cuda"  # デフォルトのデバイス
     batch_size = 16
@@ -268,6 +277,7 @@ def when_transformers_pipeline_loader_executed(pipeline_settings: dict) -> dict:
     )
     try:
         components = ModelLoad.load_transformers_pipeline_components(
+            task=task, # task 引数を渡す
             model_name=model_name,
             model_path=model_path,
             device=device,
@@ -546,7 +556,7 @@ def then_components_generated(loaded_components: dict, request):
     elif "tensorflowモデルのロード" in scenario_name.lower():
         # TensorFlow の When ステップが返す components のキーと型を期待値として設定
         # h5 フォーマットを想定し、model の型は tf.keras.Model とする
-        expected_components = {"model_dir": Path, "model": tf.keras.Model}
+        expected_components = {"model_dir": Path, "model": keras.Model} # tf.keras -> keras
     # 他のシナリオもここに追加していく
     else:
         pytest.fail(f"Unknown scenario '{scenario_name}' in then_components_generated.")
@@ -622,7 +632,7 @@ def then_tensorflow_components_generated(
 
     # model の型チェック (Examples の <type> に基づく)
     if expected_type_str_from_examples == "KerasModel":
-        assert isinstance(model_component, tf.keras.Model), (
+        assert isinstance(model_component, keras.Model), ( # tf.keras -> keras
             f"'model' の型が期待値 (tf.keras.Model) と異なります: {type(model_component)}"
         )
     elif expected_type_str_from_examples == "SavedModel":
@@ -739,12 +749,18 @@ def then_model_state_is_updated(
 
 
 @pytest.fixture
-def model_config():
-    """モデル設定を提供するフィクスチャ"""
+def model_config() -> dict:
+    """モデル設定をロードして返すフィクスチャ"""
+    logging.debug("Loading model config using config_registry.get_all_config()")
     try:
-        # utils を使って設定をロード
-        return utils.load_model_config()
-    except FileNotFoundError:
-        pytest.fail("config/models.toml が見つかりません")
+        # config_registry から get_all_config() を使って設定を取得
+        config_data = config_registry.get_all_config()
+        if not isinstance(config_data, dict):
+             # 予期しない型の場合、エラーにするか空辞書を返すか検討
+             # ここではエラーにする
+             raise TypeError(f"config_registry.get_all_config() did not return a dict, got {type(config_data)}")
+        return config_data
+    except AttributeError:
+         pytest.fail("config_registry does not have the expected get_all_config() method.")
     except Exception as e:
-        pytest.fail(f"モデル設定の読み込みに失敗: {e}")
+        pytest.fail(f"Failed to load model config using config_registry.get_all_config(): {e}")

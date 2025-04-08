@@ -13,7 +13,6 @@ from unittest.mock import MagicMock
 from pytest_bdd import given, scenarios, then, when, parsers
 from image_annotator_lib.core.utils import (
     load_file,
-    load_model_config,
     calculate_phash,
 )
 

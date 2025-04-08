@@ -25,8 +25,9 @@ from transformers import AutoProcessor
 
 # --- ローカルインポート ---
 from ..exceptions.errors import ModelLoadError, OutOfMemoryError
+from .config import config_registry
 from .model_factory import ModelLoad
-from .utils import load_model_config, setup_logger
+from .utils import setup_logger
 
 # ロガーの初期化
 logger = setup_logger(__name__)
@@ -100,15 +101,12 @@ class BaseAnnotator(ABC):
         model_name (str): モデル設定ファイル (`models.toml`) 内のモデル名。
         DEFAULT_CHUNK_SIZE (int): `predict` メソッドでのデフォルトのチャンクサイズ。
         logger (logging.Logger): このクラスインスタンス用のロガー。
-        config (dict[str, Any]): `models.toml` からロードされたこのモデルの設定。
-        model_path (str): モデルファイルまたはディレクトリへのパス (必須設定)。
-        device (str): 推論に使用するデバイス ("cuda", "cpu" など)。
-        chunk_size (int): 一度に処理する画像の数。
+        model_path (str): モデルファイルまたはディレクトリへのパス。
+        device (str): 推論に使用するデバイス ("cuda", "cpu")。
+        chunk_size (int): 一度に処理する画像の数 (バッチサイズ)。
         components (dict[str, Any]): ロードされたモデルコンポーネントを保持する辞書。
                                      キーと値の型は `ModelComponents` TypedDict を参照。
     """
-
-    DEFAULT_CHUNK_SIZE: int = 8
 
     def __init__(self, model_name: str):
         """BaseAnnotator を初期化します。
@@ -128,26 +126,14 @@ class BaseAnnotator(ABC):
         self.logger.debug(f"{self.__class__.__name__} をモデル '{model_name}' で初期化中...")
 
         try:
-            all_configs = load_model_config()
-            if model_name not in all_configs:
-                raise ValueError(f"モデル '{model_name}' の設定が設定ファイルに見つかりません。")
-            self.config: dict[str, Any] = all_configs[model_name]
+            self.model_path = config_registry.get(self.model_name, "model_path")
+            self.logger.debug(f"モデルパス: {self.model_path}")
 
-            try:
-                self.model_path = self.config["model_path"]
-                self.logger.debug(f"モデルパス: {self.model_path}")
-            except KeyError:
-                message = f"モデル '{model_name}' の設定に必須キー 'model_path' がありません。"
-                self.logger.error(message)
-                raise ValueError(message) from None
+            # device と chunk_size (オプション、デフォルト値指定)
+            self.device = config_registry.get(self.model_name, "device", "cuda")
+            self.chunk_size = config_registry.get(self.model_name, "chunk_size", 8)
 
-            # オプション設定の取得とデフォルト値設定
-            self.device = self.config.get("device", "cuda")
-            self.chunk_size = self.config.get("chunk_size", self.DEFAULT_CHUNK_SIZE)
-
-            # 属性の初期化
             self.components: dict[str, Any] = {}
-
             self.logger.debug(f"{self.__class__.__name__} '{model_name}' の初期化完了。")
 
         except Exception as e:
@@ -256,7 +242,7 @@ class BaseAnnotator(ABC):
     def _generate_result(
         self,
         phash: str | None,
-        tags: list[str],
+        tags: list[str] | str,
         formatted_output: Any,
         error: str | None = None,
     ) -> AnnotationResult:
@@ -286,7 +272,7 @@ class BaseAnnotator(ABC):
         """画像リストに対して予測を実行し、結果を返します。チャンクに分割してバッチ処理します。"""
         all_results: list[AnnotationResult] = []
         num_images = len(images)
-        chunk_size = self.chunk_size if hasattr(self, "chunk_size") else self.DEFAULT_CHUNK_SIZE
+        chunk_size = self.chunk_size
 
         self.logger.info(
             f"モデル '{self.model_name}' で {num_images} 枚の画像をチャンクサイズ {chunk_size} で処理します。"
@@ -295,7 +281,7 @@ class BaseAnnotator(ABC):
         # 画像リストをチャンクに分割してループ処理
         for i in range(0, num_images, chunk_size):
             chunk_images = images[i : i + chunk_size]
-            chunk_phash_list = phash_list[i : i + chunk_size] if i < len(phash_list) else []
+            chunk_phash_list = phash_list[i : i + chunk_size] if phash_list and i < len(phash_list) else []
             current_chunk_size = len(chunk_images)
 
             self.logger.debug(
@@ -326,93 +312,31 @@ class BaseAnnotator(ABC):
                     )
                     all_results.append(result)
 
-            except Exception as e:
-                self.logger.error(f"チャンク {i // chunk_size + 1} の処理中にエラーが発生: {e}")
-
-                # エラーが発生した場合は、チャンク内の各画像にエラー結果を追加
+            except (OutOfMemoryError, MemoryError, OSError) as e:
+                error_message = "メモリ不足エラー"
+                self.logger.error(f"チャンク {i // chunk_size + 1} の処理中にメモリ不足エラーが発生: {e}")
                 for j, _ in enumerate(chunk_images):
                     phash = chunk_phash_list[j] if j < len(chunk_phash_list) else None
                     result = self._generate_result(
-                        phash=phash, tags=[], formatted_output=None, error=str(e)
+                        phash=phash, tags=[], formatted_output=None, error=error_message
                     )
                     all_results.append(result)
-
-                raise
+                # メモリ不足の場合は後続チャンクの処理を継続するため raise しない
+            except Exception as e:
+                error_message = str(e)
+                self.logger.error(f"チャンク {i // chunk_size + 1} の処理中に予期せぬエラーが発生: {e}")
+                for j, _ in enumerate(chunk_images):
+                    phash = chunk_phash_list[j] if j < len(chunk_phash_list) else None
+                    result = self._generate_result(
+                        phash=phash, tags=[], formatted_output=None, error=error_message
+                    )
+                    all_results.append(result)
+                # 予期せぬエラーの場合も後続チャンクの処理を継続するため raise しない (必要に応じて再検討)
 
         self.logger.debug(
             f"モデル '{self.model_name}' の全チャンク処理が完了しました。合計 {len(all_results)} 件の結果を生成しました。"
         )
         return all_results
-
-    def _extract_category_tags(
-        self, attr_name: str, labels_with_probs: list[tuple[str, float]]
-    ) -> dict[str, float]:
-        """カテゴリータグを抽出するヘルパー関数 (ONNX/TF タガー用)。"""
-        category_tags: dict[str, float] = {}
-        indexes = getattr(self, attr_name, [])
-        for i in indexes:
-            if 0 <= i < len(labels_with_probs):
-                tag_name, prob = labels_with_probs[i]
-                category_tags[tag_name] = prob
-            else:
-                self.logger.warning(f"インデックス {i} が範囲外です (ラベル数: {len(self.labels)})。")
-        return category_tags
-
-    def _format_predictions_single(
-        self, raw_output: np.ndarray[Any, np.dtype[Any]]
-    ) -> dict[str, dict[str, float]]:
-        """単一の生出力をカテゴリ別にフォーマットします (ONNX/TF タガー用)。"""
-        result: dict[str, dict[str, float]] = {}
-        if not hasattr(self, "labels") or not self.labels:
-            self.logger.warning("ラベルがロードされていません。フォーマットできません。")
-            return {"error": {}}
-        if raw_output.ndim == 2 and raw_output.shape[0] == 1:
-            predictions = raw_output[0].astype(float)
-        elif raw_output.ndim == 1:
-            predictions = raw_output.astype(float)
-        else:
-            self.logger.error(f"予期しない生出力形状: {raw_output.shape}")
-            return {"error": {}}
-        if len(self.labels) != len(predictions):
-            self.logger.error(
-                f"ラベル数 ({len(self.labels)}) と予測数 ({len(predictions)}) が一致しません。"
-            )
-            return {"error": {}}
-        labels_with_probs = list(zip(self.labels, predictions, strict=True))
-        if not hasattr(self, "_category_attr_map") or not self._category_attr_map:
-            self.logger.warning(
-                "_category_attr_map がサブクラスで定義されていません。カテゴリ分類なしでフォーマットします。"
-            )
-            result["general"] = {label: float(prob) for label, prob in labels_with_probs}
-            return result
-
-        for category_key, attr_name in self._category_attr_map.items():
-            category_tags = self._extract_category_tags(attr_name, labels_with_probs)
-            if category_tags:
-                result[category_key] = category_tags
-        if "rating" in result and "ratings" not in result:
-            result["ratings"] = result.pop("rating")
-        return result
-
-    def _generate_tags_single(self, formatted_output: dict[str, dict[str, float]]) -> list[str]:
-        """フォーマットされた単一出力からタグリストを生成します (ONNX/TF タガー用)。"""
-        tags = []
-        if not formatted_output or "error" in formatted_output:
-            return []
-
-        for category, tag_dict in formatted_output.items():
-            if category == "error":
-                continue
-            for tag, confidence in tag_dict.items():
-                if confidence >= self.tag_threshold:
-                    tags.append((tag, confidence))
-
-        unique_tags: dict[str, float] = {}
-        for tag, conf in tags:
-            if tag not in unique_tags or conf > unique_tags[tag]:
-                unique_tags[tag] = conf
-
-        return [tag for tag, _ in sorted(unique_tags.items(), key=lambda x: x[1], reverse=True)]
 
 
 # --- フレームワーク別基底クラス ---
@@ -428,8 +352,8 @@ class TransformersBaseAnnotator(BaseAnnotator):
         """
         super().__init__(model_name)
         # 設定ファイルから追加パラメータを取得
-        self.max_length = self.config.get("max_length", 75)
-        self.processor_path = self.config.get("processor_path", self.model_path)
+        self.max_length = config_registry.get(self.model_name, "max_length", 75)
+        self.processor_path = config_registry.get(self.model_name, "processor_path")
 
     def __enter__(self) -> "TransformersBaseAnnotator":
         """
@@ -450,11 +374,16 @@ class TransformersBaseAnnotator(BaseAnnotator):
 
             # --- CUDAへの復元処理 ---
             logger.debug(f"モデル {self.model_name} を {self.device} へ復元試行")
-            self.components = ModelLoad.restore_model_to_cuda(self.model_name, self.components, self.device)
+            self.components = ModelLoad.restore_model_to_cuda(self.model_name, self.device, self.components)
             logger.debug(f"モデル {self.model_name} の {self.device} への復元成功")
+        except (OutOfMemoryError, MemoryError, OSError) as mem_e:
+             # メモリ関連エラーはそのまま上位に伝播させる
+             raise mem_e
         except Exception as e:
-            # その他のロード/復元時エラー
-            logger.exception(f"モデル {self.model_name} のロード/復元に失敗: {e}")
+            # メモリ関連以外の予期せぬエラー
+            logger.exception(f"モデル {self.model_name} のロード/復元中に予期せぬエラーが発生: {e}")
+            # 予期せぬエラーは ModelLoadError でラップして再送出するなどの検討も可能だが、
+            # ここでは元の挙動に合わせてそのまま raise する
             raise
 
         return self
@@ -482,32 +411,26 @@ class TransformersBaseAnnotator(BaseAnnotator):
             raise RuntimeError("Transformer モデルがロードされていません。")
         model: Any = self.components["model"]
         outputs = []
-        try:
-            with torch.no_grad():
-                for processed_image in processed:
-                    if hasattr(model, "generate"):
-                        model_out = model.generate(**processed_image, max_length=self.max_length)
-                    else:
-                        model_out = model(**processed_image)
-                        if hasattr(model_out, "last_hidden_state"):
-                            model_out = model_out.last_hidden_state
-                        elif hasattr(model_out, "logits"):
-                            model_out = model_out.logits
-                    outputs.append(model_out)
-            return outputs
-        except torch.cuda.OutOfMemoryError as e:
-            error_message = f"CUDAメモリ不足: モデル '{self.model_name}' の推論実行中"
-            self.logger.error(error_message)
-            try:
-                if self.device.startswith("cuda") and torch.cuda.is_available():
-                    self.logger.error(torch.cuda.memory_summary(device=self.device))
-            except Exception as mem_e:
-                self.logger.error(f"CUDAメモリサマリーの取得に失敗: {mem_e}")
-            raise OutOfMemoryError(error_message) from e
-        except Exception as e:
-            self.logger.exception(f"モデル '{self.model_name}' の推論実行中にエラーが発生: {e}")
-            raise RuntimeError(f"推論エラー: {e}") from e
+        # generateメソッドの一般的な引数やモデルのforwardメソッドの引数を想定
+        KNOWN_ARGS = {"input_ids", "pixel_values", "attention_mask", "token_type_ids", "position_ids", "labels"}
 
+        with torch.no_grad():
+            for processed_image in processed:
+                # モデルに渡す引数をフィルタリング
+                model_kwargs = {k: v for k, v in processed_image.items() if k in KNOWN_ARGS}
+
+                if hasattr(model, "generate"):
+                    # generateメソッドにmax_lengthを追加
+                    model_kwargs["max_length"] = self.max_length
+                    model_out = model.generate(**model_kwargs)
+                else:
+                    model_out = model(**model_kwargs)
+                    if hasattr(model_out, "last_hidden_state"):
+                        model_out = model_out.last_hidden_state
+                    elif hasattr(model_out, "logits"):
+                        model_out = model_out.logits
+                outputs.append(model_out)
+        return outputs
     def _format_predictions(self, token_ids_list: list[torch.Tensor]) -> list[str]:
         """生出力バッチをフォーマットします (Transformers用、テキストデコード)。"""
         if "processor" not in self.components or self.components["processor"] is None:
@@ -527,8 +450,18 @@ class TransformersBaseAnnotator(BaseAnnotator):
             raise ValueError(f"予測結果のフォーマット失敗: {e}") from e
 
     def _generate_tags(self, formatted_output: str) -> list[str]:
-        """キャプション文字列を単一要素のリストに変換します。"""
-        return [formatted_output]
+        """キャプション文字列を単一要素のリストに変換します。
+
+        formatted_outputは文字列型であるため、単純にそれを含む
+        リストを返します。文字列以外の型の場合は、エラーログを出力して
+        空のリストを返します。
+        """
+        try:
+            if isinstance(formatted_output, str):
+                return [formatted_output]
+        except Exception as e:
+            self.logger.exception(f"タグ生成中にエラー発生: {e}")
+            return []
 
 
 class TensorflowBaseAnnotator(BaseAnnotator):
@@ -548,14 +481,21 @@ class TensorflowBaseAnnotator(BaseAnnotator):
                 self.logger.debug("TensorFlow: 利用可能な GPU が見つかりません。")
         except Exception as gpu_e:
             self.logger.warning(f"TensorFlow GPU 設定中にエラー: {gpu_e}")
-        self.model_format: str = self.config.get("model_format", "h5")
+
+        # model_format の取得と検証 (config_registry を使用)
+        model_format_input = config_registry.get(self.model_name, "model_format", "h5")
+        allowed_formats = ("h5", "saved_model", "pb")
+        if model_format_input not in allowed_formats:
+            raise ValueError(
+                f"設定 '{self.model_name}' の 'model_format' が不正です: '{model_format_input}'. "
+                f"許可される形式: {allowed_formats}"
+            )
+        self.model_format = model_format_input
 
     def __enter__(self) -> "TensorflowBaseAnnotator":
         """TensorFlow モデルコンポーネントをロードします。状態管理は ModelLoad に委譲します。"""
         self.logger.debug(f"Entering context for TensorFlow model '{self.model_name}'")
         try:
-            if not self.model_path:
-                raise ValueError("'model_path' が設定されていません。")
             self.logger.info(
                 f"Loading/Restoring TensorFlow components: model='{self.model_path}', format='{self.model_format}'"
             )
@@ -660,19 +600,123 @@ class TensorflowBaseAnnotator(BaseAnnotator):
         """フォーマットされた単一出力からタグリストを生成します (ONNX/TF タガー用)。"""
         return self._generate_tags_single(formatted_output)
 
+    def _extract_category_tags(
+        self, attr_name: str, tags_with_probs: list[tuple[str, float]]
+    ) -> dict[str, float]:
+        """カテゴリータグを抽出するヘルパー関数 (TF タガー用)。"""
+        category_tags: dict[str, float] = {}
+        # サブクラスで定義される属性 (e.g., self.general_indexes) を取得
+        indexes = getattr(self, attr_name, [])
+        all_tags_list = getattr(self, "all_tags", [])  # all_tags もサブクラスで設定される
+        for i in indexes:
+            if 0 <= i < len(tags_with_probs):
+                tag_name, prob = tags_with_probs[i]
+                category_tags[tag_name] = prob
+            else:
+                self.logger.warning(f"インデックス {i} が範囲外です (タグ総数: {len(all_tags_list)})。")
+        return category_tags
+
+    def _format_predictions_single(
+        self,
+        raw_output: np.ndarray[Any, np.dtype[Any]] | tf.Tensor,  # TFテンソルも受け入れる
+    ) -> dict[str, dict[str, float]]:
+        """単一の生出力をカテゴリ別にフォーマットします (TF タガー用)。"""
+        result: dict[str, dict[str, float]] = {}
+        all_tags_list = getattr(self, "all_tags", [])  # サブクラスで設定される all_tags を取得
+        if not all_tags_list:
+            self.logger.warning(
+                "タグ候補リスト (all_tags) がロードされていません。フォーマットできません。"
+            )
+            return {"error": {}}  # エラーを示す辞書を返す
+
+        # 生出力が NumPy 配列であることを確認し、適切な次元から予測値を取得
+        if isinstance(raw_output, tf.Tensor):  # TFテンソルの場合 NumPy に変換
+            try:
+                predictions = raw_output.numpy().astype(float)
+            except Exception as e:
+                self.logger.exception(f"TF テンソルの NumPy 変換中にエラー: {e}")
+                return {"error": {}}
+        elif isinstance(raw_output, np.ndarray):
+            predictions = raw_output.astype(float)
+
+        # 予測値の次元をチェック
+        if predictions.ndim == 2 and predictions.shape[0] == 1:
+            predictions = predictions[0]
+        elif predictions.ndim != 1:
+            self.logger.error(f"予期しない予測値形状: {predictions.shape}")
+            return {"error": {}}
+
+        # タグ数と予測数が一致するか確認
+        if len(all_tags_list) != len(predictions):
+            self.logger.error(
+                f"タグ候補リスト数 ({len(all_tags_list)}) と予測数 ({len(predictions)}) が一致しません。"
+            )
+            return {"error": {}}
+
+        tags_with_probs = list(zip(all_tags_list, predictions, strict=True))
+
+        # _category_attr_map はサブクラス (e.g., DeepDanbooruTagger) で定義される
+        category_map = getattr(self, "_category_attr_map", None)
+        if category_map is None:
+            self.logger.warning(
+                "_category_attr_map がサブクラスで定義されていません。カテゴリ分類なしでフォーマットします。"
+            )
+            result["general"] = {tag: float(prob) for tag, prob in tags_with_probs}
+            return result
+
+        # カテゴリごとにタグを抽出
+        for category_key, attr_name in category_map.items():
+            category_tags = self._extract_category_tags(attr_name, tags_with_probs)
+            if category_tags:
+                result[category_key] = category_tags
+
+        # rating キーを ratings にリネーム (後方互換性のため)
+        if "rating" in result and "ratings" not in result:
+            result["ratings"] = result.pop("rating")
+
+        return result
+
+    def _generate_tags_single(self, formatted_output: dict[str, dict[str, float]]) -> list[str]:
+        """フォーマットされた単一出力からタグリストを生成します (TF タガー用)。"""
+        tags = []
+        if not formatted_output or "error" in formatted_output:
+            return []
+
+        # tag_threshold はサブクラスで設定される想定
+        threshold = getattr(self, "tag_threshold", 0.35)
+
+        for category, tag_dict in formatted_output.items():
+            if category == "error":  # エラーカテゴリはスキップ
+                continue
+            for tag, confidence in tag_dict.items():
+                # 確信度の値が辞書型の場合 (古い形式への対応?)、confidence キーの値を取得
+                conf_value = (
+                    confidence["confidence"]
+                    if isinstance(confidence, dict) and "confidence" in confidence
+                    else confidence
+                )
+
+                # confidence が数値型であることを確認してから比較
+                if isinstance(conf_value, (float)) and conf_value >= threshold:
+                    tags.append((tag, float(conf_value)))  # 確信度も float に統一
+
+        # タグ名で重複を除去し、最も高い確信度を採用
+        unique_tags: dict[str, float] = {}
+        for tag, conf in tags:
+            if tag not in unique_tags or conf > unique_tags[tag]:
+                unique_tags[tag] = conf
+
+        # 確信度で降順ソートしてタグ名のみを返す
+        return [tag for tag, _ in sorted(unique_tags.items(), key=lambda x: x[1], reverse=True)]
+
 
 class ClipBaseAnnotator(BaseAnnotator):
     """CLIP モデルをベースとする Scorer 用の基底クラス。"""
 
     def __init__(self, model_name: str, **kwargs: Any):
         super().__init__(model_name=model_name)
-        self.base_model = self.config.get("base_model")
-        if not self.base_model:
-            raise ValueError(f"モデル '{model_name}' の設定に 'base_model' (CLIPモデルID) が必要です。")
-        if not self.model_path:
-            raise ValueError(
-                f"モデル '{model_name}' の設定に 'model_path' (分類器ヘッドのパス) が必要です。"
-            )
+        # base_model は必須設定でデフォルト値なし
+        self.base_model = config_registry.get(self.model_name, "base_model")  # 型チェック後に代入
         logger.debug(
             f"ClipBaseAnnotator '{model_name}' initialized. Base CLIP: {self.base_model}, Head: {self.model_path}"
         )
@@ -686,8 +730,8 @@ class ClipBaseAnnotator(BaseAnnotator):
                 base_model=self.base_model,
                 model_path=self.model_path,
                 device=self.device,
-                activation_type=self.config.get("activation_type"),
-                final_activation_type=self.config.get("final_activation_type"),
+                activation_type=config_registry.get(self.model_name, "activation_type"),
+                final_activation_type=config_registry.get(self.model_name, "final_activation_type"),
             )
             if loaded_components:
                 self.components = loaded_components
@@ -782,8 +826,8 @@ class PipelineBaseAnnotator(BaseAnnotator):
 
     def __init__(self, model_name: str):
         super().__init__(model_name=model_name)
-        self.batch_size = self.config.get("batch_size", 8)
-        self.task = self.config.get("task", "image-classification")
+        self.batch_size = config_registry.get(self.model_name, "batch_size", 8)
+        self.task = config_registry.get(self.model_name, "task", "image-classification")
 
     def __enter__(self) -> "PipelineBaseAnnotator":
         """
@@ -833,7 +877,7 @@ class ONNXBaseAnnotator(BaseAnnotator):
 
     def __init__(self, model_name: str):
         super().__init__(model_name=model_name)
-        self.labels: list[str] = []
+        self.all_tags: list[str] = []
         self.target_size: tuple[int, int] | None = None
         self.is_nchw_expected: bool = False
 
@@ -842,8 +886,9 @@ class ONNXBaseAnnotator(BaseAnnotator):
         ModelLoad を使用して ONNX モデルコンポーネントをロードします。
         """
         try:
+            self.logger.info(f"Loading/Restoring ONNX components: model='{self.model_path}'")
             self.components = ModelLoad.load_onnx_components(self.model_name, self.model_path, self.device)
-            self._load_labels()
+            self._load_tags()
             self._analyze_model_input_format()
 
         except OutOfMemoryError as e:
@@ -865,9 +910,109 @@ class ONNXBaseAnnotator(BaseAnnotator):
             self.logger.error(f"ONNX モデル '{self.model_name}' のコンテキスト内で例外発生: {exc_val}")
 
     @abstractmethod
-    def _load_labels(self) -> None:
-        """ラベル情報をロードし、必要に応じてカテゴリインデックスを設定します (サブクラスで実装)。"""
-        raise NotImplementedError("ONNX サブクラスは _load_labels を実装する必要があります。")
+    def _load_tags(self) -> None:
+        """タグ情報 (語彙) をロードし、必要に応じてカテゴリインデックスを設定します (サブクラスで実装)。"""
+        raise NotImplementedError("ONNX サブクラスは _load_tags を実装する必要があります。")
+
+    def _extract_category_tags(
+        self, attr_name: str, tags_with_probs: list[tuple[str, float]]
+    ) -> dict[str, float]:
+        """カテゴリータグを抽出するヘルパー関数 (ONNX タガー用)。"""
+        category_tags: dict[str, float] = {}
+        indexes = getattr(self, attr_name, [])
+        all_tags_list = getattr(self, "all_tags", [])
+        for i in indexes:
+            if 0 <= i < len(tags_with_probs):
+                tag_name, prob = tags_with_probs[i]
+                category_tags[tag_name] = prob
+            else:
+                self.logger.warning(f"インデックス {i} が範囲外です (タグ総数: {len(all_tags_list)})。")
+        return category_tags
+
+    def _format_predictions_single(
+        self, raw_output: np.ndarray[Any, np.dtype[Any]]
+    ) -> dict[str, dict[str, float]]:
+        """単一の生出力をカテゴリ別にフォーマットします (ONNX タガー用)。"""
+        result: dict[str, dict[str, float]] = {}
+        all_tags_list = getattr(self, "all_tags", [])
+        if not all_tags_list:
+            self.logger.warning(
+                "タグ候補リスト (all_tags) がロードされていません。フォーマットできません。"
+            )
+            return {"error": {}}  # エラーを示す辞書を返す
+
+        # 出力が NumPy 配列であることを確認
+        if not isinstance(raw_output, np.ndarray):
+            self.logger.error(f"予期しない生出力型: {type(raw_output)}")
+            return {"error": {}}
+
+        # 予測値の次元をチェックして調整
+        if raw_output.ndim == 2 and raw_output.shape[0] == 1:
+            predictions = raw_output[0].astype(float)
+        elif raw_output.ndim == 1:
+            predictions = raw_output.astype(float)
+        else:
+            self.logger.error(f"予期しない生出力形状: {raw_output.shape}")
+            return {"error": {}}
+
+        # タグ数と予測数が一致するか確認
+        if len(all_tags_list) != len(predictions):
+            self.logger.error(
+                f"タグ候補リスト数 ({len(all_tags_list)}) と予測数 ({len(predictions)}) が一致しません。"
+            )
+            return {"error": {}}
+
+        tags_with_probs = list(zip(all_tags_list, predictions, strict=True))
+
+        # _category_attr_map はサブクラス (e.g., WDTagger) で定義される
+        category_map = getattr(self, "_category_attr_map", None)
+        if category_map is None:
+            self.logger.warning(
+                "_category_attr_map がサブクラスで定義されていません。カテゴリ分類なしでフォーマットします。"
+            )
+            result["general"] = {tag: float(prob) for tag, prob in tags_with_probs}
+            return result
+
+        # カテゴリごとにタグを抽出
+        for category_key, attr_name in category_map.items():
+            category_tags = self._extract_category_tags(attr_name, tags_with_probs)
+            if category_tags:
+                result[category_key] = category_tags
+
+        # rating キーを ratings にリネーム (後方互換性のため)
+        if "rating" in result and "ratings" not in result:
+            result["ratings"] = result.pop("rating")
+
+        return result
+
+    def _generate_tags_single(self, formatted_output: dict[str, dict[str, float]]) -> list[str]:
+        """フォーマットされた単一出力からタグリストを生成します (ONNX タガー用)。"""
+        tags = []
+        if not formatted_output or "error" in formatted_output:
+            return []
+
+        # tag_threshold はサブクラスで設定される想定
+        threshold = getattr(self, "tag_threshold", 0.35)
+
+        for category, tag_dict in formatted_output.items():
+            if category == "error":
+                continue
+            for tag, confidence in tag_dict.items():
+                conf_value = (
+                    confidence["confidence"]
+                    if isinstance(confidence, dict) and "confidence" in confidence
+                    else confidence
+                )
+
+                if isinstance(conf_value, (float)) and conf_value >= threshold:
+                    tags.append((tag, float(conf_value)))
+
+        unique_tags: dict[str, float] = {}
+        for tag, conf in tags:
+            if tag not in unique_tags or conf > unique_tags[tag]:
+                unique_tags[tag] = conf
+
+        return [tag for tag, _ in sorted(unique_tags.items(), key=lambda x: x[1], reverse=True)]
 
     def _analyze_model_input_format(self) -> None:
         """モデル入力形式を分析し、ターゲットサイズと次元形式を判定・保存する"""

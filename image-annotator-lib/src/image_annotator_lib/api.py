@@ -30,7 +30,7 @@ class ModelResultDict(TypedDict, total=False):
     error: str | None
 
 
-class AnnotationResultDict(dict[str, dict[str, ModelResultDict]]):
+class PHashAnnotationResults(dict[str, dict[str, ModelResultDict]]):
     """画像のpHashをキーとする評価結果辞書。
 
     Attributes:
@@ -116,7 +116,7 @@ def _annotate_model(
 def _process_model_results(
     model_name: str,
     annotation_results: list[AnnotationResult],
-    results_by_phash: AnnotationResultDict,
+    results_by_phash: PHashAnnotationResults,
 ) -> None:
     """モデルの結果を pHash ベースの構造に変換します。
 
@@ -147,7 +147,7 @@ def _handle_error(
     model_name: str,
     error: Exception,
     num_images: int,
-    results_by_phash: AnnotationResultDict,
+    results_by_phash: PHashAnnotationResults,
     phash_map: dict[int, str],
 ) -> None:
     """エラー発生時の結果処理を行います。
@@ -175,7 +175,7 @@ def _handle_error(
         }
 
 
-def annotate(images_list: list[Image.Image], model_name_list: list[str]) -> AnnotationResultDict:
+def annotate(images_list: list[Image.Image], model_name_list: list[str]) -> PHashAnnotationResults:
     """複数の画像を指定された複数のモデルで評価(アノテーション)します。
 
     各画像のpHashをキーとして、モデルごとの評価結果を整理して返します。
@@ -211,7 +211,7 @@ def annotate(images_list: list[Image.Image], model_name_list: list[str]) -> Anno
 
     # 結果格納用 (pHash ベース)
     # {phash: {model_name: {"tags": [...], "formatted_output": ..., "error": ...}}}
-    results_by_phash: AnnotationResultDict = AnnotationResultDict()
+    results_by_phash: PHashAnnotationResults = PHashAnnotationResults()
 
     # 各モデルで評価
     for model_name in model_name_list:

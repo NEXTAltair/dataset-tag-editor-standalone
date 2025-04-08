@@ -8,9 +8,8 @@ import pytest
 from image_annotator_lib.core.utils import (
     load_file,
     setup_logger,
-    load_model_config,
 )
-
+from image_annotator_lib.core.config import config_registry
 scenarios("../features/core/utils.feature")
 
 
@@ -110,7 +109,7 @@ def when_app_executes_important_operation():
 @when("設定ファイルの読み込みを要求される", target_fixture="config_data")
 def when_config_file_is_loaded():
     # 設定ファイルを読み込む
-    return load_model_config()
+    return config_registry()
 
 
 @then("システムはそのファイルへのローカルパスを返す")
@@ -174,8 +173,8 @@ def then_correct_parameters_loaded(config_data, config_fixture):
 @then("パフォーマンスのためにこれらの設定値はキャッシュされる")
 def then_parameters_cached():
     # キャッシュがうまく機能しているか確認（同じオブジェクトが返されることを確認）
-    config1 = load_model_config()
-    config2 = load_model_config()
+    config1 = config_registry()
+    config2 = config_registry()
 
     # 同一オブジェクトである（キャッシュが機能している）ことを確認
     assert config1 is config2

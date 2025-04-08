@@ -13,6 +13,7 @@ from typing import Any
 import psutil
 import torch
 from PIL import Image
+import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from image_annotator_lib.core.registry import (
@@ -21,12 +22,13 @@ from image_annotator_lib.core.registry import (
     list_available_annotators,
 )
 from image_annotator_lib.api import (
+    PHashAnnotationResults,
     _MODEL_INSTANCE_REGISTRY,
     annotate,
     get_annotator_instance,
 )
 
-scenarios("../features/tagger.feature")
+scenarios("../features/integration/tagger.feature")
 
 
 # resourcesディレクトリのパス
@@ -143,7 +145,7 @@ def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
 @when("この画像をタグ付けする", target_fixture="tagging_results")
 def when_tag_image(
     valid_image: list[Image.Image], model_for_tagging: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+) -> PHashAnnotationResults:
     # 単一のモデルで評価する
     return annotate(valid_image, model_for_tagging)
 
@@ -151,7 +153,7 @@ def when_tag_image(
 @when("これらの画像を一括アノテーションを実行", target_fixture="tagging_results")
 def when_tag_images(
     valid_images: list[Image.Image], model_for_tagging: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+) -> PHashAnnotationResults:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_images, model_for_tagging)
 
@@ -159,7 +161,7 @@ def when_tag_images(
 @when("この画像を複数のモデルでアノテーションを実行", target_fixture="tagging_results")
 def when_tag_image_multiple_models(
     valid_image: list[Image.Image], multiple_models: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+) -> PHashAnnotationResults:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_image, multiple_models)
 
@@ -167,7 +169,7 @@ def when_tag_image_multiple_models(
 @when("これらの画像を複数のモデルで一括アノテーションを実行", target_fixture="tagging_results")
 def when_tag_images_multiple_models(
     valid_images: list[Image.Image], multiple_models: list[str]
-) -> dict[str, list[dict[str, Any]]]:
+) -> PHashAnnotationResults:
     # 単一のモデルで複数画像を評価する
     return annotate(valid_images, multiple_models)
 
@@ -290,7 +292,7 @@ def then_cached_model_instance_returned(reused_instance: dict) -> None:
 
 @then("画像に対するモデルの処理結果が返される")
 def then_valid_tag_returned_single_image(
-    tagging_results: dict[str, list[dict[str, Any]]],
+    tagging_results: dict[str, dict[str, dict[str, Any]]],
     valid_image: list[Image.Image],
 ) -> None:
     verify_tagging_results(tagging_results, valid_image, expect_multiple_models=False)
@@ -298,7 +300,7 @@ def then_valid_tag_returned_single_image(
 
 @then("各画像に対するモデルの処理結果が返される")
 def then_valid_tag_returned_multiple_images(
-    tagging_results: dict[str, list[dict[str, Any]]],
+    tagging_results: dict[str, dict[str, dict[str, Any]]],
     valid_images: list[Image.Image],
 ) -> None:
     verify_tagging_results(tagging_results, valid_images, expect_multiple_models=False)
@@ -306,7 +308,7 @@ def then_valid_tag_returned_multiple_images(
 
 @then("画像に対する各モデルの処理結果が返される")
 def then_valid_tag_returned_multiple_models(
-    tagging_results: dict[str, list[dict[str, Any]]],
+    tagging_results: dict[str, dict[str, dict[str, Any]]],
     valid_image: list[Image.Image],
 ) -> None:
     verify_tagging_results(tagging_results, valid_image, expect_multiple_models=True)
@@ -314,7 +316,7 @@ def then_valid_tag_returned_multiple_models(
 
 @then("各画像に対する各モデルの処理結果が返される")
 def then_valid_tag_returned_multiple_models_multiple_images(
-    tagging_results: dict[str, list[dict[str, Any]]],
+    tagging_results: dict[str, dict[str, dict[str, Any]]],
     valid_images: list[Image.Image],
 ) -> None:
     verify_tagging_results(tagging_results, valid_images, expect_multiple_models=True)
@@ -322,7 +324,7 @@ def then_valid_tag_returned_multiple_models_multiple_images(
 
 # 共通の検証ロジック
 def verify_tagging_results(
-    tagging_results: dict[str, list[dict[str, Any]]],
+    tagging_results: dict[str, dict[str, dict[str, Any]]],
     images: list[Image.Image],
     expect_multiple_models: bool = False,
 ) -> None:
@@ -334,34 +336,41 @@ def verify_tagging_results(
         expect_multiple_models: 複数モデルの結果が期待されるかどうか
     """
     # 結果が存在するか確認
-    assert len(tagging_results) > 0, "タグ付け結果が空です"
+    assert len(tagging_results) > 0, "タグ付け結果が空です (pHashが見つかりません)"
+    assert len(tagging_results) == len(images), "評価された画像の枚数 (pHashの数) が入力画像数と一致しません"
 
-    # モデル数の確認
+    # 最初の画像の結果からモデル数を取得して確認
+    first_image_results = next(iter(tagging_results.values()))
+    num_models_in_result = len(first_image_results)
     if expect_multiple_models:
-        assert len(tagging_results) > 1, "2つ以上のモデルで評価されていません"
+        assert num_models_in_result > 1, "結果に複数のモデルが含まれていません"
     else:
-        assert len(tagging_results) == 1, "2つ以上のモデルが評価されています"
+        assert num_models_in_result == 1, "結果に単一のモデルのみが含まれていません"
 
     # 各モデルの結果をチェック
-    model_count = 0
-    for _, results in tagging_results.items():
-        # 評価された画像の枚数が正しいことを確認
-        assert len(results) == len(images), "評価された画像の枚数が正しくありません"
+    # 各画像の結果をチェック
+    for phash, model_results in tagging_results.items():
+        # この画像のモデル数が期待通りか確認
+        assert len(model_results) == num_models_in_result, f"画像 {phash} のモデル数が期待値 ({num_models_in_result}) と異なります"
 
-        # 結果の形式が正しいことを確認
-        assert all(isinstance(result, dict) for result in results), "結果の形式が不正です"
+        # 各モデルの結果をチェック
+        for model_name, result_dict in model_results.items():
+            # 結果の形式が正しいことを確認 (result_dictが辞書であること)
+            assert isinstance(result_dict, dict), f"画像 {phash}, モデル {model_name} の結果形式が不正です (dictではありません)"
 
-        # 各結果に必要なキーが含まれているか
-        for result in results:
-            assert "model_name" in result, "結果に 'model_name' キーがありません"
-            assert "model_output" in result, "結果に 'model_output' キーがありません"
-            assert "annotation" in result, "結果に 'annotation' キーがありません"
-
-        model_count += 1
-
-    # 複数モデルの場合、モデル数が正しいか確認
-    if expect_multiple_models:
-        assert model_count == len(tagging_results), "モデルの数が正しくありません"
+            # 必要なキーが含まれているか確認
+            assert "tags" in result_dict, f"画像 {phash}, モデル {model_name} の結果に 'tags' キーがありません"
+            assert "formatted_output" in result_dict, f"画像 {phash}, モデル {model_name} の結果に 'formatted_output' キーがありません"
+            assert "error" in result_dict, f"画像 {phash}, モデル {model_name} の結果に 'error' キーがありません"
+            # エラーチェック
+            error_message = result_dict["error"]
+            if error_message is not None:
+                # メモリ不足エラーの場合はテストをスキップ
+                if error_message == "メモリ不足エラー": # 文字列完全一致で判定
+                    pytest.skip(f"メモリ不足エラーのためスキップ: 画像 {phash}, モデル {model_name}")
+                else:
+                    # その他の予期せぬエラーはテストを失敗させる
+                    pytest.fail(f"画像 {phash}, モデル {model_name} で予期せぬエラーが発生しました: {error_message}")
 
 
 @then("全ての評価が正常に完了している")

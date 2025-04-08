@@ -5,19 +5,20 @@
 
 from pytest_bdd import given, scenarios, then, when
 
-from image_annotator_lib.core.utils import load_model_config  # type: ignore
+from image_annotator_lib.core.config import config_registry
 from image_annotator_lib.core.registry import (  # type: ignore
     get_cls_obj_registry,
     list_available_annotators,
     register_annotators,
 )
 
-scenarios("../features/registry.feature")
+scenarios("../features/core/registry.feature")
 
 
 @given("モデル設定TOMLファイルが存在する", target_fixture="test_config_toml")
 def given_scorer_config_exists():
-    return load_model_config()
+    config_registry.load()
+    return config_registry.get_all_config()
 
 
 @given(
