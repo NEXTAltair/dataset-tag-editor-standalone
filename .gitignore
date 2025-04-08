@@ -6,9 +6,7 @@ venv/
 temp
 models
 .DS_Store
-config.json
 settings.json
-launch_user.bat
 coverage.xml
 .coverage
 

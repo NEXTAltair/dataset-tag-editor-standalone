@@ -39,7 +39,7 @@ def _list_module_files(directory: str) -> list[Path]:
 def _import_module_from_file(module_file: Path, base_module_path: str) -> ModuleType | None:
     """ファイルパスからPythonモジュールをインポートします。"""
     module_name = module_file.stem
-    # base_module_pathはPythonのインポートパス (例: 'image_annotator_lib.models')
+    # base_module_pathはPythonのインポートパス (例: 'image_annotator_lib.model_classs')
     full_module_path = f"{base_module_path}.{module_name}"
     try:
         module = importlib.import_module(full_module_path)
@@ -79,7 +79,7 @@ def _gather_available_classes(directory: str) -> dict[str, ModelClass]:
     module_files = _list_module_files(directory)
     for module_file in module_files:
         # モジュールインポートパスを修正 (ユーザー変更を反映)
-        module = _import_module_from_file(module_file, "image_annotator_lib.models")
+        module = _import_module_from_file(module_file, "image_annotator_lib.model_classs")
         if module is None:
             continue
         for name, obj in inspect.getmembers(module, inspect.isclass):
@@ -109,7 +109,7 @@ def _register_models(
     registry: dict[str, ModelClass],  # ModelClass を使用
     model_type_name: str,  # ログ用の "annotator" など
     directory: str,  # モデルクラスファイルを含むディレクトリ (例: "models")
-    base_module_path: str,  # 基本Pythonインポートパス (例: "image_annotator_lib.models")
+    base_module_path: str,  # 基本Pythonインポートパス (例: "image_annotator_lib.model_classs")
     base_class: type,  # モデルが継承すべき基底クラス (ABC互換性のために 'type' を使用)
     # config_filter は削除
 ) -> None:
@@ -209,7 +209,7 @@ def register_annotators() -> dict[str, ModelClass]:
         registry=_MODEL_CLASS_OBJ_REGISTRY,
         model_type_name="annotator",
         directory="models",
-        base_module_path="image_annotator_lib.models",
+        base_module_path="image_annotator_lib.model_classs",
         base_class=BaseAnnotator,
     )
     logger.info("アノテータの登録が完了しました。")
