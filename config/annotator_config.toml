@@ -201,3 +201,35 @@ estimated_size_gb = 0.687
 model_path = "https://github.com/KichangKim/DeepDanbooru/releases/download/v1-20191108-sgd-e30/deepdanbooru-v1-20191108-sgd-e30.zip"
 class = "DeepDanbooruTagger"
 estimated_size_gb = 0.66
+
+["gemini-1.5-pro"]
+class = "GoogleApiAnnotator" # モデルクラス
+model_name_on_provider = "gemini-1.5-pro"
+timeout = 90
+retry_count = 3
+retry_delay = 1.0
+min_request_interval = 1.0
+
+[gpt-4o-mini]
+class = "OpenAIApiAnnotator"
+model_name_on_provider = "gpt-4o-mini"
+timeout = 60
+retry_count = 3
+retry_delay = 1.0
+min_request_interval = 1.0
+
+["quasar-alpha"]
+class = "OpenRouterApiAnnotator"
+model_name_on_provider = "openrouter/quasar-alpha"
+timeout = 60
+retry_count = 3
+retry_delay = 1.0
+min_request_interval = 1.0
+
+["claude-3.5sonnet-20240620"]
+class = "AnthropicApiAnnotator"
+model_name_on_provider = "claude-3-5-sonnet-20240620"
+timeout = 60
+retry_count = 3
+retry_delay = 1.0
+min_request_interval = 1.0

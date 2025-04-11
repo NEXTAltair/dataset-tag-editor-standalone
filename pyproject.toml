@@ -1,5 +1,5 @@
 [project]
-name = "dataset-tag-editor-standalone-1"
+name = "dataset-tag-editor-standalone"
 version = "0.1.0"
 description = "Dataset tag editor with image interrogator support"
 readme = "README.md"
@@ -13,6 +13,9 @@ dependencies = [
     "numpy",
     "timm",
     "print-color",
+    "anthropic",
+    "openai",
+    "google",
 ]
 
 [tool.uv.sources]
@@ -64,13 +67,31 @@ markers = [
 # addopts = "-ra -q" # 必要であれば追加
 
 [tool.ruff]
-line-length = 120
-target-version = "py312"
-select = ["E", "F", "I", "B"]
+# Lint Rules: https://docs.astral.sh/ruff/rules/
+# Format Options: https://docs.astral.sh/ruff/formatter/
+line-length = 320
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "C",   # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "RUF021", # カタカナの `ノ` でなにか言われるのを回避
+]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_no_return = true
 
 [build-system]
 requires = ["hatchling"]

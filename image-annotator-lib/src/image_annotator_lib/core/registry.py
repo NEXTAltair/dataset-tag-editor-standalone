@@ -39,7 +39,6 @@ def _list_module_files(directory: str) -> list[Path]:
 def _import_module_from_file(module_file: Path, base_module_path: str) -> ModuleType | None:
     """ファイルパスからPythonモジュールをインポートします。"""
     module_name = module_file.stem
-    # base_module_pathはPythonのインポートパス (例: 'image_annotator_lib.model_classs')
     full_module_path = f"{base_module_path}.{module_name}"
     try:
         module = importlib.import_module(full_module_path)
@@ -79,7 +78,7 @@ def _gather_available_classes(directory: str) -> dict[str, ModelClass]:
     module_files = _list_module_files(directory)
     for module_file in module_files:
         # モジュールインポートパスを修正 (ユーザー変更を反映)
-        module = _import_module_from_file(module_file, "image_annotator_lib.model_classs")
+        module = _import_module_from_file(module_file, "image_annotator_lib.model_class")
         if module is None:
             continue
         for name, obj in inspect.getmembers(module, inspect.isclass):
@@ -108,8 +107,8 @@ def _gather_available_classes(directory: str) -> dict[str, ModelClass]:
 def _register_models(
     registry: dict[str, ModelClass],  # ModelClass を使用
     model_type_name: str,  # ログ用の "annotator" など
-    directory: str,  # モデルクラスファイルを含むディレクトリ (例: "models")
-    base_module_path: str,  # 基本Pythonインポートパス (例: "image_annotator_lib.model_classs")
+    directory: str,  # モデルクラスファイルを含むディレクトリ (例: "model_class")
+    base_module_path: str,  # 基本Pythonインポートパス (例: "image_annotator_lib.model_class")
     base_class: type,  # モデルが継承すべき基底クラス (ABC互換性のために 'type' を使用)
     # config_filter は削除
 ) -> None:
@@ -138,7 +137,7 @@ def _register_models(
         logger.debug(f"モデル設定をロードしました: 合計 {len(config)} エントリ。")
 
         # 指定されたディレクトリから利用可能なクラスを収集
-        available_classes = _gather_available_classes(directory)  # base_module_path 不要に
+        available_classes = _gather_available_classes(directory)
         logger.debug(
             f"{len(available_classes)} 個の利用可能な {model_type_name} クラスが見つかりました: {list(available_classes.keys())}"
         )
@@ -180,10 +179,6 @@ def _register_models(
                     f"クラス名が正しいか、それを定義するファイルが '{base_module_path}' に存在するか確認してください。"
                 )
 
-    except FileNotFoundError:
-        logger.error(
-            "モデル設定ファイル (models.yaml) が見つかりません。モデルを登録できません。", exc_info=True
-        )
     except Exception as e:
         logger.error(
             f"予期せぬエラーのため {model_type_name} モデルの登録に失敗しました: {e}", exc_info=True
@@ -208,8 +203,8 @@ def register_annotators() -> dict[str, ModelClass]:
     _register_models(
         registry=_MODEL_CLASS_OBJ_REGISTRY,
         model_type_name="annotator",
-        directory="models",
-        base_module_path="image_annotator_lib.model_classs",
+        directory="model_class",
+        base_module_path="image_annotator_lib.model_class",
         base_class=BaseAnnotator,
     )
     logger.info("アノテータの登録が完了しました。")

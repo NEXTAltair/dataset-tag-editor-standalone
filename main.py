@@ -1,5 +1,5 @@
 def main():
-    print("Hello from dataset-tag-editor-standalone-1!")
+    print("Hello from dataset-tag-editor-standalone!")
 
 
 if __name__ == "__main__":

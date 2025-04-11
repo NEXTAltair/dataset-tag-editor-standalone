@@ -4,7 +4,7 @@
 
 ファイルパスの指定ミスを防ぐため、主要なパス情報を以下に記載します。
 
-- **プロジェクトルート:** `h:/Git/dataset-tag-editor-standalone-1`
+- **プロジェクトルート:** `dataset-tag-editor-standalone`
   - すべてのファイル操作 (read_file, write_to_file など) は、原則としてこのディレクトリからの相対パスで指定します。
 - **`image-annotator-lib` パッケージルート:** `image-annotator-lib/src/image_annotator_lib`
   - ライブラリ内部のモジュールを参照・編集する際の基点となります。

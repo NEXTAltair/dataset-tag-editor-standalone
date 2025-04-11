@@ -7,45 +7,26 @@ import gc
 import os
 import random
 import time
-from pathlib import Path
 from typing import Any
 
 import psutil
-import torch
-from PIL import Image
 import pytest
-from pytest_bdd import given, scenarios, then, when
-
+import torch
+from image_annotator_lib.api import (
+    _MODEL_INSTANCE_REGISTRY,
+    PHashAnnotationResults,
+    annotate,
+    get_annotator_instance,
+)
 from image_annotator_lib.core.registry import (
     ModelClass,
     get_cls_obj_registry,
     list_available_annotators,
 )
-from image_annotator_lib.api import (
-    PHashAnnotationResults,
-    _MODEL_INSTANCE_REGISTRY,
-    annotate,
-    get_annotator_instance,
-)
+from PIL import Image
+from pytest_bdd import given, scenarios, then, when
 
 scenarios("../features/integration/tagger.feature")
-
-
-# resourcesディレクトリのパス
-resources_dir = Path(__file__).parent.parent / "resources"
-
-
-def load_image_files(count=1):
-    """指定された枚数の画像ファイルをリストとして読み込む"""
-    image_path = resources_dir / "img" / "1_img"
-    files = list(image_path.glob("*.webp"))
-
-    # 指定された枚数だけファイルを取得（ディレクトリ内のファイル数を超えないように）
-    count = min(count, len(files))
-    files = files[:count]
-
-    # すべての画像をリストに格納して返す
-    return [Image.open(file) for file in files]
 
 
 # given ----------------
@@ -69,7 +50,7 @@ def given_instantiated_models(tagger_registry: dict[str, ModelClass]) -> dict[st
 
 
 @given("有効な画像ファイルが準備されている", target_fixture="valid_image")
-def given_valid_single_image() -> list[Image.Image]:
+def given_valid_single_image(load_image_files: list[Image.Image]) -> list[Image.Image]:
     return load_image_files(count=1)  # 1枚の画像を読み込む
 
 
@@ -80,12 +61,12 @@ def given_tagger_instances(tagger_registry: dict[str, Any]) -> list[str]:
 
 
 @given("複数の有効な画像ファイルが準備されている", target_fixture="valid_images")
-def given_valid_images_multiple() -> list[Image.Image]:
+def given_valid_images_multiple(load_image_files: list[Image.Image]) -> list[Image.Image]:
     return load_image_files(count=5)  # 明示的に5枚の画像を指定
 
 
 @given("複数のモデルが指定されている", target_fixture="multiple_models")
-def given_multiple_models(tagger_registry) -> list[str]:
+def given_multiple_models(tagger_registry: dict[str, Any]) -> list[str]:
     # 利用可能なモデル名のリスト
     available_models = list(tagger_registry.keys())
 
@@ -125,13 +106,13 @@ def when_instantiate_all_models(available_models: list[str]) -> dict[str, Any]:
 
 @when("同じモデルクラスを再度インスタンス化する", target_fixture="reused_instance")
 def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
-    # 最初のモデル名を取得（どのモデルでもキャッシュ機能のテストには十分）
+    # 最初のモデル名を取得(どのモデルでもキャッシュ機能のテストには十分)
     model_name = next(iter(instantiated_models.keys()))
 
     # 元のインスタンスを記録
     original_instance = instantiated_models[model_name]
 
-    # get_tagger_instanceを使ってキャッシュから取得（_create_tagger_instanceではない）
+    # get_tagger_instanceを使ってキャッシュから取得(_create_tagger_instanceではない)
     reused_instance = get_annotator_instance(model_name)
 
     # 比較のために必要な情報を返す
@@ -143,9 +124,7 @@ def when_instantiate_same_model(instantiated_models: dict[str, Any]) -> dict:
 
 
 @when("この画像をタグ付けする", target_fixture="tagging_results")
-def when_tag_image(
-    valid_image: list[Image.Image], model_for_tagging: list[str]
-) -> PHashAnnotationResults:
+def when_tag_image(valid_image: list[Image.Image], model_for_tagging: list[str]) -> PHashAnnotationResults:
     # 単一のモデルで評価する
     return annotate(valid_image, model_for_tagging)
 
@@ -337,7 +316,9 @@ def verify_tagging_results(
     """
     # 結果が存在するか確認
     assert len(tagging_results) > 0, "タグ付け結果が空です (pHashが見つかりません)"
-    assert len(tagging_results) == len(images), "評価された画像の枚数 (pHashの数) が入力画像数と一致しません"
+    assert len(tagging_results) == len(images), (
+        "評価された画像の枚数 (pHashの数) が入力画像数と一致しません"
+    )
 
     # 最初の画像の結果からモデル数を取得して確認
     first_image_results = next(iter(tagging_results.values()))
@@ -351,26 +332,38 @@ def verify_tagging_results(
     # 各画像の結果をチェック
     for phash, model_results in tagging_results.items():
         # この画像のモデル数が期待通りか確認
-        assert len(model_results) == num_models_in_result, f"画像 {phash} のモデル数が期待値 ({num_models_in_result}) と異なります"
+        assert len(model_results) == num_models_in_result, (
+            f"画像 {phash} のモデル数が期待値 ({num_models_in_result}) と異なります"
+        )
 
         # 各モデルの結果をチェック
         for model_name, result_dict in model_results.items():
             # 結果の形式が正しいことを確認 (result_dictが辞書であること)
-            assert isinstance(result_dict, dict), f"画像 {phash}, モデル {model_name} の結果形式が不正です (dictではありません)"
+            assert isinstance(result_dict, dict), (
+                f"画像 {phash}, モデル {model_name} の結果形式が不正です (dictではありません)"
+            )
 
             # 必要なキーが含まれているか確認
-            assert "tags" in result_dict, f"画像 {phash}, モデル {model_name} の結果に 'tags' キーがありません"
-            assert "formatted_output" in result_dict, f"画像 {phash}, モデル {model_name} の結果に 'formatted_output' キーがありません"
-            assert "error" in result_dict, f"画像 {phash}, モデル {model_name} の結果に 'error' キーがありません"
+            assert "tags" in result_dict, (
+                f"画像 {phash}, モデル {model_name} の結果に 'tags' キーがありません"
+            )
+            assert "formatted_output" in result_dict, (
+                f"画像 {phash}, モデル {model_name} の結果に 'formatted_output' キーがありません"
+            )
+            assert "error" in result_dict, (
+                f"画像 {phash}, モデル {model_name} の結果に 'error' キーがありません"
+            )
             # エラーチェック
             error_message = result_dict["error"]
             if error_message is not None:
                 # メモリ不足エラーの場合はテストをスキップ
-                if error_message == "メモリ不足エラー": # 文字列完全一致で判定
+                if error_message == "メモリ不足エラー":  # 文字列完全一致で判定
                     pytest.skip(f"メモリ不足エラーのためスキップ: 画像 {phash}, モデル {model_name}")
                 else:
                     # その他の予期せぬエラーはテストを失敗させる
-                    pytest.fail(f"画像 {phash}, モデル {model_name} で予期せぬエラーが発生しました: {error_message}")
+                    pytest.fail(
+                        f"画像 {phash}, モデル {model_name} で予期せぬエラーが発生しました: {error_message}"
+                    )
 
 
 @then("全ての評価が正常に完了している")
@@ -429,7 +422,7 @@ def then_no_resource_leaks(test_results: dict) -> None:  # 引数名を汎用的
     )  # 切り替えテストは10回記録
 
     if is_stress_test:
-        # CPU（メイン）メモリのチェック
+        # CPU(メイン)メモリのチェック
         memory_readings = test_results["memory_usage"]
         if len(memory_readings) >= 2:
             initial_memory = memory_readings[0]  # 最初の測定値
@@ -439,9 +432,9 @@ def then_no_resource_leaks(test_results: dict) -> None:  # 引数名を汎用的
             print(f"[ストレステスト] CPUメモリ初期使用量: {initial_memory:.2f}MB")
             print(f"[ストレステスト] CPUメモリ最終使用量: {final_memory:.2f}MB")
             print(f"[ストレステスト] CPUメモリ増加量: {memory_increase:.2f}MB")
-            # CPU（メイン）メモリの許容範囲チェック
+            # CPU(メイン)メモリの許容範囲チェック
             assert memory_increase < 1500, (
-                f"CPUメモリ使用量が{memory_increase:.2f}MB増加しました（許容値:1500MB）"
+                f"CPUメモリ使用量が{memory_increase:.2f}MB増加しました(許容値:1500MB)"
             )
 
         # GPUメモリのチェックを追加
@@ -457,7 +450,7 @@ def then_no_resource_leaks(test_results: dict) -> None:  # 引数名を汎用的
                 print(f"[ストレステスト] GPUメモリ増加量: {gpu_increase:.2f}MB")
                 # GPUメモリの許容範囲チェック
                 assert gpu_increase < 500, (
-                    f"GPUメモリ使用量が{gpu_increase:.2f}MB増加しました（許容値:500MB）"
+                    f"GPUメモリ使用量が{gpu_increase:.2f}MB増加しました(許容値:500MB)"
                 )
 
     elif is_switch_test:
@@ -472,17 +465,17 @@ def then_no_resource_leaks(test_results: dict) -> None:  # 引数名を汎用的
             print(f"[切り替えテスト] 最大メモリ使用量: {max_memory:.2f}MB")
             print(f"[切り替えテスト] 平均メモリ使用量: {avg_memory:.2f}MB")
 
-            # 平均値との比較を追加（より安定した指標）
+            # 平均値との比較を追加(より安定した指標)
             final_to_avg_ratio = final_memory / avg_memory
             print(f"[切り替えテスト] 最終/平均メモリ比: {final_to_avg_ratio:.2f}")
 
-            # より現実的な判定条件（最終値が平均の2倍未満）
+            # より現実的な判定条件(最終値が平均の2倍未満)
             memory_stable = final_to_avg_ratio < 2
 
             assert memory_stable, (
-                "モデル切り替えテスト中のメモリ使用量に持続的な増加（メモリリークの可能性）が検出されました"
+                "モデル切り替えテスト中のメモリ使用量に持続的な増加(メモリリークの可能性)が検出されました"
             )
 
     else:
-        # どちらのテスト結果でもない場合（通常は発生しないはず）
+        # どちらのテスト結果でもない場合(通常は発生しないはず)
         raise ValueError("不明なテスト結果が渡されました")

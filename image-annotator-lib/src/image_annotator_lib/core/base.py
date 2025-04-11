@@ -6,16 +6,15 @@
 およびフレームワーク固有の基底クラスを提供します。
 """
 
+import asyncio
+import json
 import logging
+import re
+import traceback
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import (
-    Any,
-    Self,
-    TypedDict,
-)
+from typing import Any, NoReturn, Self, TypedDict
 
-# --- 依存ライブラリのインポート ---
 import numpy as np
 import onnxruntime as ort
 import tensorflow as tf
@@ -24,7 +23,18 @@ from PIL import Image
 from transformers import AutoProcessor
 
 # --- ローカルインポート ---
-from ..exceptions.errors import ModelLoadError, OutOfMemoryError
+from ..exceptions.errors import (
+    ApiAuthenticationError,
+    ApiRateLimitError,
+    ApiRequestError,
+    ApiServerError,
+    ApiTimeoutError,
+    ConfigurationError,
+    InsufficientCreditsError,
+    ModelLoadError,
+    OutOfMemoryError,
+    WebApiError,
+)
 from .config import config_registry
 from .model_factory import ModelLoad
 from .utils import setup_logger
@@ -88,6 +98,31 @@ class TagConfidence(TypedDict):
     source: str
 
 
+# Web API Annotator 用の型定義を追加
+class FormattedOutput(TypedDict):
+    """フォーマット済み出力を格納する辞書型"""
+
+    annotation: dict[str, Any] | None  # {"tags": list[str], "captions": list[str], "score": float}
+    error: str | None
+
+
+# Web API Annotator 用の型定義を追加
+class WebApiAnnotationOutput(TypedDict):
+    """WebApiBaseAnnotator._format_predictions の戻り値の型定義。
+
+    APIからの生のレスポンスを解析した結果を格納します。
+
+    Attributes:
+        annotation: 解析されたアノテーション情報 (タグ、キャプション、スコアなど) を含む辞書。
+                    解析に成功した場合に設定され、失敗した場合は None。
+        error: 解析中にエラーが発生した場合のエラーメッセージ文字列。
+               エラーがない場合は None。
+    """
+
+    annotation: dict[str, Any] | None  # {"tags": list[str], "captions": list[str], "score": float}
+    error: str | None
+
+
 # --- 基底クラス ---
 
 
@@ -131,7 +166,15 @@ class BaseAnnotator(ABC):
 
             # device と chunk_size (オプション、デフォルト値指定)
             self.device = config_registry.get(self.model_name, "device", "cuda")
-            self.chunk_size = config_registry.get(self.model_name, "chunk_size", 8)
+            # chunk_size を int にキャストして型を保証
+            chunk_size_val = config_registry.get(self.model_name, "chunk_size", 8)
+            try:
+                self.chunk_size = int(chunk_size_val)
+            except (ValueError, TypeError):
+                self.logger.warning(
+                    f"chunk_size に不正な値 {chunk_size_val} が設定されました。デフォルトの 8 を使用します。"
+                )
+                self.chunk_size = 8
 
             self.components: dict[str, Any] = {}
             self.logger.debug(f"{self.__class__.__name__} '{model_name}' の初期化完了。")
@@ -300,15 +343,29 @@ class BaseAnnotator(ABC):
 
                 # 4. 各画像ごとにタグを生成して結果を作成
                 for j, formatted_output in enumerate(formatted_outputs):
-                    # 個々の画像に対してタグを生成
-                    tags = self._generate_tags(formatted_output)
+                    # formatted_output がエラーを含むかチェック (TypedDict を想定)
+                    error_in_format = None
+                    if isinstance(formatted_output, dict):
+                        error_in_format = formatted_output.get("error")
+
+                    # エラーがない場合のみタグを生成
+                    tags: list[str] = []
+                    if error_in_format is None:
+                        try:
+                            tags = self._generate_tags(formatted_output)  # この行を try ブロック内に移動
+                        except Exception as tag_gen_e:
+                            self.logger.error(f"タグ生成中にエラー: {tag_gen_e}")
+                            error_in_format = f"タグ生成エラー: {tag_gen_e}"
+                    else:
+                        # フォーマット段階でエラーがあれば、タグ生成はスキップ
+                        self.logger.debug(f"フォーマットエラーのためタグ生成をスキップ: {error_in_format}")
 
                     # 対応するpHashを取得
                     phash = chunk_phash_list[j] if j < len(chunk_phash_list) else None
 
-                    # 結果を生成
+                    # 結果を生成 (エラー情報を渡す)
                     result = self._generate_result(
-                        phash=phash, tags=tags, formatted_output=formatted_output, error=None
+                        phash=phash, tags=tags, formatted_output=formatted_output, error=error_in_format
                     )
                     all_results.append(result)
 
@@ -317,9 +374,7 @@ class BaseAnnotator(ABC):
                 self.logger.error(f"チャンク {i // chunk_size + 1} の処理中にメモリ不足エラーが発生: {e}")
                 for j, _ in enumerate(chunk_images):
                     phash = chunk_phash_list[j] if j < len(chunk_phash_list) else None
-                    result = self._generate_result(
-                        phash=phash, tags=[], formatted_output=None, error=error_message
-                    )
+                    result = self._generate_result(phash=phash, tags=[], formatted_output=None, error=error_message)
                     all_results.append(result)
                 # メモリ不足の場合は後続チャンクの処理を継続するため raise しない
             except Exception as e:
@@ -327,9 +382,7 @@ class BaseAnnotator(ABC):
                 self.logger.error(f"チャンク {i // chunk_size + 1} の処理中に予期せぬエラーが発生: {e}")
                 for j, _ in enumerate(chunk_images):
                     phash = chunk_phash_list[j] if j < len(chunk_phash_list) else None
-                    result = self._generate_result(
-                        phash=phash, tags=[], formatted_output=None, error=error_message
-                    )
+                    result = self._generate_result(phash=phash, tags=[], formatted_output=None, error=error_message)
                     all_results.append(result)
                 # 予期せぬエラーの場合も後続チャンクの処理を継続するため raise しない (必要に応じて再検討)
 
@@ -377,8 +430,8 @@ class TransformersBaseAnnotator(BaseAnnotator):
             self.components = ModelLoad.restore_model_to_cuda(self.model_name, self.device, self.components)
             logger.debug(f"モデル {self.model_name} の {self.device} への復元成功")
         except (OutOfMemoryError, MemoryError, OSError) as mem_e:
-             # メモリ関連エラーはそのまま上位に伝播させる
-             raise mem_e
+            # メモリ関連エラーはそのまま上位に伝播させる
+            raise mem_e
         except Exception as e:
             # メモリ関連以外の予期せぬエラー
             logger.exception(f"モデル {self.model_name} のロード/復元中に予期せぬエラーが発生: {e}")
@@ -388,9 +441,7 @@ class TransformersBaseAnnotator(BaseAnnotator):
 
         return self
 
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
-    ) -> None:
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         self.components = ModelLoad.cache_to_main_memory(self.model_name, self.components)
 
     def _preprocess_images(self, images: list[Image.Image]) -> list[dict[str, Any]]:
@@ -398,9 +449,7 @@ class TransformersBaseAnnotator(BaseAnnotator):
         results = []
         for image in images:
             # プロセッサの出力を取得してデバイスに移動
-            processed_output = self.components["processor"](images=image, return_tensors="pt").to(
-                self.device
-            )
+            processed_output = self.components["processor"](images=image, return_tensors="pt").to(self.device)
             self.logger.debug(f"辞書のキー: {processed_output.keys()}")
             results.append(processed_output)
         return results
@@ -412,7 +461,14 @@ class TransformersBaseAnnotator(BaseAnnotator):
         model: Any = self.components["model"]
         outputs = []
         # generateメソッドの一般的な引数やモデルのforwardメソッドの引数を想定
-        KNOWN_ARGS = {"input_ids", "pixel_values", "attention_mask", "token_type_ids", "position_ids", "labels"}
+        KNOWN_ARGS = {
+            "input_ids",
+            "pixel_values",
+            "attention_mask",
+            "token_type_ids",
+            "position_ids",
+            "labels",
+        }
 
         with torch.no_grad():
             for processed_image in processed:
@@ -431,6 +487,7 @@ class TransformersBaseAnnotator(BaseAnnotator):
                         model_out = model_out.logits
                 outputs.append(model_out)
         return outputs
+
     def _format_predictions(self, token_ids_list: list[torch.Tensor]) -> list[str]:
         """生出力バッチをフォーマットします (Transformers用、テキストデコード)。"""
         if "processor" not in self.components or self.components["processor"] is None:
@@ -515,20 +572,14 @@ class TensorflowBaseAnnotator(BaseAnnotator):
             self.components = {}
             raise
         except Exception as e:
-            self.logger.exception(
-                f"TensorFlow モデル '{self.model_name}' のロード/準備中に予期せぬエラー: {e}"
-            )
+            self.logger.exception(f"TensorFlow モデル '{self.model_name}' のロード/準備中に予期せぬエラー: {e}")
             self.components = {}
             raise ModelLoadError(f"予期せぬロードエラー: {e}") from e
         return self
 
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
-    ) -> None:
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         """TensorFlow モデルのリソースを解放します。"""
-        self.logger.debug(
-            f"Exiting context for TensorFlow model '{self.model_name}' (exception: {exc_type})"
-        )
+        self.logger.debug(f"Exiting context for TensorFlow model '{self.model_name}' (exception: {exc_type})")
         if self.components:
             try:
                 components_to_release = self.components
@@ -541,9 +592,7 @@ class TensorflowBaseAnnotator(BaseAnnotator):
             finally:
                 self.components = {}
         if exc_type:
-            self.logger.error(
-                f"TensorFlow モデル '{self.model_name}' のコンテキスト内で例外発生: {exc_val}"
-            )
+            self.logger.error(f"TensorFlow モデル '{self.model_name}' のコンテキスト内で例外発生: {exc_val}")
 
     @abstractmethod
     def _load_tags(self) -> None:
@@ -600,9 +649,7 @@ class TensorflowBaseAnnotator(BaseAnnotator):
         """フォーマットされた単一出力からタグリストを生成します (ONNX/TF タガー用)。"""
         return self._generate_tags_single(formatted_output)
 
-    def _extract_category_tags(
-        self, attr_name: str, tags_with_probs: list[tuple[str, float]]
-    ) -> dict[str, float]:
+    def _extract_category_tags(self, attr_name: str, tags_with_probs: list[tuple[str, float]]) -> dict[str, float]:
         """カテゴリータグを抽出するヘルパー関数 (TF タガー用)。"""
         category_tags: dict[str, float] = {}
         # サブクラスで定義される属性 (e.g., self.general_indexes) を取得
@@ -624,9 +671,7 @@ class TensorflowBaseAnnotator(BaseAnnotator):
         result: dict[str, dict[str, float]] = {}
         all_tags_list = getattr(self, "all_tags", [])  # サブクラスで設定される all_tags を取得
         if not all_tags_list:
-            self.logger.warning(
-                "タグ候補リスト (all_tags) がロードされていません。フォーマットできません。"
-            )
+            self.logger.warning("タグ候補リスト (all_tags) がロードされていません。フォーマットできません。")
             return {"error": {}}  # エラーを示す辞書を返す
 
         # 生出力が NumPy 配列であることを確認し、適切な次元から予測値を取得
@@ -747,13 +792,9 @@ class ClipBaseAnnotator(BaseAnnotator):
             raise ModelLoadError(f"予期せぬロードエラー: {e}") from e
         return self
 
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
-    ) -> None:
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         """CLIP Scorer モデルをキャッシュします。"""
-        self.logger.debug(
-            f"Exiting context for CLIP Scorer model '{self.model_name}' (exception: {exc_type})"
-        )
+        self.logger.debug(f"Exiting context for CLIP Scorer model '{self.model_name}' (exception: {exc_type})")
         try:
             if self.components:
                 self.components = ModelLoad.cache_to_main_memory(self.model_name, self.components)
@@ -845,9 +886,7 @@ class PipelineBaseAnnotator(BaseAnnotator):
         self.components = ModelLoad.restore_model_to_cuda(self.model_name, self.device, self.components)
         return self
 
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
-    ) -> None:
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         """Pipeline モデルをキャッシュします。"""
         self.logger.debug(f"Exiting context for Pipeline model '{self.model_name}' (exception: {exc_type})")
         self.components = ModelLoad.cache_to_main_memory(self.model_name, self.components)
@@ -899,9 +938,7 @@ class ONNXBaseAnnotator(BaseAnnotator):
 
         return self
 
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any
-    ) -> None:
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
         """ONNX モデルのリソースを解放します。"""
         self.logger.debug(f"Exiting context for ONNX model '{self.model_name}' (exception: {exc_type})")
         if self.components:
@@ -914,9 +951,7 @@ class ONNXBaseAnnotator(BaseAnnotator):
         """タグ情報 (語彙) をロードし、必要に応じてカテゴリインデックスを設定します (サブクラスで実装)。"""
         raise NotImplementedError("ONNX サブクラスは _load_tags を実装する必要があります。")
 
-    def _extract_category_tags(
-        self, attr_name: str, tags_with_probs: list[tuple[str, float]]
-    ) -> dict[str, float]:
+    def _extract_category_tags(self, attr_name: str, tags_with_probs: list[tuple[str, float]]) -> dict[str, float]:
         """カテゴリータグを抽出するヘルパー関数 (ONNX タガー用)。"""
         category_tags: dict[str, float] = {}
         indexes = getattr(self, attr_name, [])
@@ -929,16 +964,12 @@ class ONNXBaseAnnotator(BaseAnnotator):
                 self.logger.warning(f"インデックス {i} が範囲外です (タグ総数: {len(all_tags_list)})。")
         return category_tags
 
-    def _format_predictions_single(
-        self, raw_output: np.ndarray[Any, np.dtype[Any]]
-    ) -> dict[str, dict[str, float]]:
+    def _format_predictions_single(self, raw_output: np.ndarray[Any, np.dtype[Any]]) -> dict[str, dict[str, float]]:
         """単一の生出力をカテゴリ別にフォーマットします (ONNX タガー用)。"""
         result: dict[str, dict[str, float]] = {}
         all_tags_list = getattr(self, "all_tags", [])
         if not all_tags_list:
-            self.logger.warning(
-                "タグ候補リスト (all_tags) がロードされていません。フォーマットできません。"
-            )
+            self.logger.warning("タグ候補リスト (all_tags) がロードされていません。フォーマットできません。")
             return {"error": {}}  # エラーを示す辞書を返す
 
         # 出力が NumPy 配列であることを確認
@@ -1093,9 +1124,7 @@ class ONNXBaseAnnotator(BaseAnnotator):
             results.append(input_data.astype(np.float32))
         return results
 
-    def _run_inference(
-        self, processed: list[np.ndarray[Any, np.dtype[Any]]]
-    ) -> list[np.ndarray[Any, np.dtype[Any]]]:
+    def _run_inference(self, processed: list[np.ndarray[Any, np.dtype[Any]]]) -> list[np.ndarray[Any, np.dtype[Any]]]:
         """バッチの各画像に対してONNX推論を実行します。"""
         if "session" not in self.components or self.components["session"] is None:
             raise RuntimeError("ONNX セッションがロードされていません。")
@@ -1133,3 +1162,312 @@ class ONNXBaseAnnotator(BaseAnnotator):
     def _generate_tags(self, formatted_output: dict[str, dict[str, float]]) -> list[str]:
         """フォーマットされた単一出力からタグリストを生成します (ONNX/TF タガー用)。"""
         return self._generate_tags_single(formatted_output)
+
+
+class WebApiBaseAnnotator(BaseAnnotator):
+    """Web API を使用するモデル用の基底クラス。"""
+
+    def __init__(self, model_name: str):
+        super().__init__(model_name)
+        # 設定ファイルから読み込む共通パラメータ
+        self.prompt_template = config_registry.get(self.model_name, "prompt_template", "Describe this image.")
+        timeout_val = config_registry.get(self.model_name, "timeout", 60)
+        try:
+            self.timeout = int(timeout_val)
+        except (ValueError, TypeError):
+            self.logger.warning(f"timeout に不正な値 {timeout_val} が設定されました。デフォルトの 60 を使用します。")
+            self.timeout = 60
+
+        # レート制限とリトライの設定
+        # retry_count を int にキャスト
+        retry_count_val = config_registry.get(self.model_name, "retry_count", 3)
+        try:
+            self.retry_count = int(retry_count_val)
+        except (ValueError, TypeError):
+            self.logger.warning(
+                f"retry_count に不正な値 {retry_count_val} が設定されました。デフォルトの 3 を使用します。"
+            )
+            self.retry_count = 3
+
+        # retry_delay を float にキャスト
+        retry_delay_val = config_registry.get(self.model_name, "retry_delay", 1.0)
+        try:
+            self.retry_delay = float(retry_delay_val)
+        except (ValueError, TypeError):
+            self.logger.warning(
+                f"retry_delay に不正な値 {retry_delay_val} が設定されました。デフォルトの 1.0 を使用します。"
+            )
+            self.retry_delay = 1.0
+
+        self.last_request_time = 0.0
+        # min_request_interval を float にキャストして型を保証
+        min_interval_val = config_registry.get(self.model_name, "min_request_interval", 1.0)
+        try:
+            self.min_request_interval = float(min_interval_val)
+        except (ValueError, TypeError):
+            self.logger.warning(
+                f"min_request_interval に不正な値 {min_interval_val} が設定されました。デフォルトの 1.0 を使用します。"
+            )
+            self.min_request_interval = 1.0
+
+        self.model_name_on_provider: str | None = config_registry.get(self.model_name, "model_name_on_provider")
+
+        self.api_key = self._load_api_key()
+        self.client: Any = None  # 追加: クライアントインスタンス用属性
+
+    @abstractmethod
+    def __enter__(self) -> Self:
+        """サブクラスでAPIクライアントを初期化し、self.clientに設定します。"""
+        raise NotImplementedError("Web API サブクラスは __enter__ を実装する必要があります。")
+
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> None:
+        """APIクライアントのリソースを解放 (Noneを設定) します。"""
+        # provider_name 属性が存在するか確認
+        provider_name = getattr(self, "provider_name", self.model_name)  # provider_name がなければ model_name を使用
+        if self.client:
+            self.logger.debug(f"APIクライアントの閉鎖/リリース{provider_name}")
+            self.client = None
+
+    @abstractmethod
+    def _load_api_key(self) -> str:
+        """環境変数から API キーをロードします。"""
+        raise NotImplementedError("Web API サブクラスは _load_api_key を実装する必要があります。")
+
+    def _preprocess_images(self, images: list[Image.Image]) -> list[str]:
+        """画像リストを Base64 エンコードした文字列のリストに変換する"""
+        import base64
+        from io import BytesIO
+
+        encoded_images = []
+        for image in images:
+            buffered = BytesIO()
+            # 画像をWEBP形式でメモリに保存
+            image.save(buffered, format="WEBP")
+            # バイトデータを取得し、Base64エンコードしてUTF-8文字列にデコード
+            encoded_image = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            encoded_images.append(encoded_image)
+
+        return encoded_images
+
+    @abstractmethod
+    def _run_inference(self, processed: list[str]) -> Any:
+        """Base64エンコードされた画像文字列リストをAPIに送信して推論結果を取得する"""
+        raise NotImplementedError("Web API サブクラスは _run_inference を実装する必要があります。")
+
+    def _wait_for_rate_limit(self) -> None:
+        """レート制限に従ってリクエスト間隔を調整する"""
+        import time
+
+        elapsed_time = time.time() - self.last_request_time
+        wait_time = self.min_request_interval - elapsed_time
+        if wait_time > 0:
+            self.logger.debug(f"レート制限のため {wait_time:.2f} 秒待機します。")
+            time.sleep(wait_time)
+        self.last_request_time = time.time()
+
+    def _handle_api_error(self, e: Exception) -> NoReturn:
+        """API エラーを捕捉し、適切なカスタム例外を発生させます。
+
+        Args:
+            e: 発生した例外。
+
+        Raises:
+            ApiAuthenticationError: API認証に失敗した場合 (401)。
+            InsufficientCreditsError: クレジット不足の場合 (402)。
+            ApiRateLimitError: APIのレート制限に達した場合 (429)。
+            ApiRequestError: リクエストの形式または内容に問題があった場合 (400)。
+            ApiServerError: APIサーバーで5xx系のエラーが発生した場合。
+            ApiTimeoutError: APIリクエストがタイムアウトした場合。
+            WebApiError: その他のAPI関連エラーの場合。
+            ConfigurationError: provider_name 属性が設定されていない場合。
+        """
+        error_message = str(e)
+        self.logger.error(f"API エラーが発生しました: {error_message}")
+        self.logger.debug(traceback.format_exc())
+
+        # provider_name 属性の存在確認
+        if not hasattr(self, "provider_name") or not self.provider_name:
+            raise ConfigurationError(
+                f"Annotatorクラス ({self.__class__.__name__}) に 'provider_name' 属性が設定されていません。"
+            )
+        provider_name = self.provider_name
+
+        # HTTPステータスコードに基づくエラーハンドリング
+        if hasattr(e, "status_code"):
+            status_code = getattr(e, "status_code", 0)
+            if status_code == 401:
+                raise ApiAuthenticationError(provider_name=provider_name) from e
+            elif status_code == 402:
+                raise InsufficientCreditsError(provider_name=provider_name) from e
+            elif status_code == 429:
+                retry_after_str = getattr(e, "retry_after", "60")  # デフォルト60秒
+                try:
+                    retry_after = int(retry_after_str)
+                except ValueError:
+                    retry_after = 60  # パース失敗時もデフォルト値
+                raise ApiRateLimitError(provider_name=provider_name, retry_after=retry_after) from e
+            elif status_code == 400:
+                raise ApiRequestError(error_message, provider_name=provider_name) from e
+            elif 500 <= status_code < 600:
+                raise ApiServerError(error_message, provider_name=provider_name, status_code=status_code) from e
+
+        # タイムアウトエラーの判定を強化
+        if isinstance(e, TimeoutError | asyncio.TimeoutError) or "timeout" in error_message.lower():
+            raise ApiTimeoutError(provider_name=provider_name) from e
+
+        # 上記のいずれにも当てはまらない場合、汎用のWebApiErrorを送出
+        raise WebApiError(f"処理中に予期せぬエラーが発生しました: {error_message}", provider_name=provider_name) from e
+
+    def _parse_common_json_response(self, text_content: str) -> WebApiAnnotationOutput:
+        """共通のJSONレスポンス文字列を解析し、WebApiAnnotationOutputを生成するヘルパー。
+
+        Args:
+            text_content: APIから返されたテキストコンテンツ。
+
+        Returns:
+            解析結果を含むWebApiAnnotationOutput辞書。
+            エラーが発生した場合は、errorフィールドにメッセージが含まれる。
+        """
+        self.logger.debug(f"_parse_common_json_response を開始: text='{text_content[:100]}...'")
+        try:
+            # JSON文字列を辞書にパース
+            data = json.loads(text_content)
+
+            # "Annotation" キー (Gemini) または ルートレベルの辞書 (OpenAI/Anthropic/OpenRouter) を想定
+            annotation_data: dict[str, Any] | None = None
+            if isinstance(data, dict):
+                if "Annotation" in data and isinstance(data["Annotation"], dict):
+                    annotation_data = data["Annotation"]
+                    self.logger.debug("JSONに 'Annotation' キーが見つかりました。")
+                # 'tags', 'caption', 'score' がルートレベルに存在するケースも考慮
+                elif any(key in data for key in ("tags", "caption", "score")):
+                    annotation_data = data
+                    self.logger.debug("JSONのルートレベルに注釈キーが見つかりました。")
+                else:
+                    self.logger.warning("JSON内に 'Annotation' キーまたは期待されるキーが見つかりません。")
+                    return WebApiAnnotationOutput(
+                        annotation=None,
+                        error="JSON内に期待されるキー (Annotation, tags, caption, score) が見つかりません。",
+                    )
+            else:
+                self.logger.warning(f"JSONデータが予期しない型 ({type(data)}) です。")
+                return WebApiAnnotationOutput(annotation=None, error=f"JSONデータが予期しない型 ({type(data)}) です。")
+
+            if annotation_data:
+                self.logger.debug(f"JSON解析成功。Annotation: {str(annotation_data)[:100]}...")
+                return WebApiAnnotationOutput(annotation=annotation_data, error=None)
+            else:
+                return WebApiAnnotationOutput(
+                    annotation=None, error="解析後、有効なAnnotationデータが見つかりませんでした。"
+                )
+
+        except json.JSONDecodeError as json_e:
+            error_message = f"JSON解析エラー: {json_e!s}. テキスト内容: '{text_content[:100]}...'"  # 末尾の \" を削除
+            self.logger.error(error_message)
+            return WebApiAnnotationOutput(annotation=None, error=error_message)
+        except Exception as e:
+            error_message = f"JSON解析中に予期せぬエラー: {e!s}"  # 末尾の \" を削除
+            self.logger.exception(error_message)  # スタックトレースも記録
+            return WebApiAnnotationOutput(annotation=None, error=error_message)
+
+    def _extract_tags_from_text(self, text: str) -> list[str]:
+        """API レスポンス (テキスト形式) からタグリストを抽出する基本実装。
+
+        JSON形式、またはカンマ区切りのタグリスト形式を試みます。
+
+        Args:
+            text: API から返されたテキスト応答。
+
+        Returns:
+            抽出されたタグのリスト。見つからない場合は空リスト。
+        """
+        self.logger.debug("_extract_tags_from_text を開始します。")
+        tags: list[str] = []
+
+        # 1. JSON 形式の解析を試みる
+        try:
+            data = json.loads(text)
+            if isinstance(data, dict):
+                # "tags" キーが存在し、リストまたはカンマ区切り文字列の場合
+                if "tags" in data:
+                    tags_data = data["tags"]
+                    if isinstance(tags_data, list):
+                        tags = [str(tag).strip() for tag in tags_data]  # 文字列に変換
+                        self.logger.debug(f"JSONから {len(tags)} 個のタグを抽出しました。")
+                        return tags
+                    elif isinstance(tags_data, str):
+                        tags = [tag.strip() for tag in tags_data.split(",") if tag.strip()]
+                        self.logger.debug(f"JSON内のカンマ区切り文字列から {len(tags)} 個のタグを抽出しました。")
+                        return tags
+                # "Annotation" -> "tags" のネスト構造も考慮 (Geminiの例)
+                elif "Annotation" in data and isinstance(data["Annotation"], dict) and "tags" in data["Annotation"]:
+                    tags_data = data["Annotation"]["tags"]
+                    if isinstance(tags_data, list):
+                        tags = [str(tag).strip() for tag in tags_data]
+                        self.logger.debug(f"JSON (Annotation->tags) から {len(tags)} 個のタグを抽出しました。")
+                        return tags
+            # JSONがリスト形式で、要素が文字列の場合
+            elif isinstance(data, list) and all(isinstance(item, str) for item in data):
+                tags = [item.strip() for item in data if item.strip()]
+                self.logger.debug(f"JSONリストから {len(tags)} 個のタグを抽出しました。")
+                return tags
+
+        except json.JSONDecodeError:
+            self.logger.debug("テキストは有効なJSONではありません。次の抽出方法を試みます。")
+        except Exception as e:
+            self.logger.warning(f"JSON解析中に予期せぬエラー: {e}。次の抽出方法を試みます。", exc_info=True)
+
+        # 2. カンマ区切りテキスト形式の解析を試みる
+        # "tags:" のようなプレフィックスがある場合とない場合の両方を考慮
+        # より具体的にタグらしきものを抽出する正規表現
+        # 例: tags: tag1, tag2, tag3 / tags: "tag1", "tag2" / tag1, tag2, ...
+        patterns = [
+            r"tags:?\s*\[?\"?\'?(.*?)\'?\"?\]?$",  # tags: ["tag1", "tag2"] or tags: 'tag1', 'tag2' or tags: tag1, tag2
+            r"^\[?\"?\'?(.*?)\'?\"?\]?$",  # ["tag1", "tag2"] or 'tag1', 'tag2' or tag1, tag2 (行頭から)
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                potential_tags_str = match.group(1).strip()
+                # クォートや括弧が残っている可能性があるので除去
+                potential_tags_str = re.sub(r'^["\'\[\]\s]+|["\'\[\]\s]+$', "", potential_tags_str)
+                # カンマで分割
+                tags = [tag.strip() for tag in potential_tags_str.split(",") if tag.strip()]
+                if tags:
+                    self.logger.debug(
+                        f"正規表現 ({pattern}) でカンマ区切りテキストから {len(tags)} 個のタグを抽出しました。"
+                    )
+                    return tags
+
+        self.logger.warning(f"どの形式でもタグを抽出できませんでした。テキスト: {text[:100]}...")
+        return []
+
+    # _generate_tags の共通実装を追加
+    def _generate_tags(self, formatted_output: WebApiAnnotationOutput) -> list[str]:
+        """フォーマット済み出力からタグを生成する (WebApiBaseAnnotator 共通実装)
+
+        Args:
+            formatted_output: _format_predictions で生成された WebApiAnnotationOutput 辞書。
+
+        Returns:
+            抽出されたタグのリスト。エラー発生時やタグが見つからない場合は空リスト。
+        """
+        if formatted_output.get("error") or formatted_output.get("annotation") is None:
+            return []
+
+        annotation = formatted_output["annotation"]
+        if annotation is None:
+            return []
+
+        # annotation 辞書から tags を抽出
+        tags_data = annotation.get("tags")
+
+        if isinstance(tags_data, list):
+            # リスト内の要素が文字列であることを確認して返す
+            return [str(tag).strip() for tag in tags_data if isinstance(tag, str)]
+        elif isinstance(tags_data, str):
+            # 文字列の場合はカンマで分割
+            return [tag.strip() for tag in tags_data.split(",") if tag.strip()]
+        else:
+            self.logger.warning(f"予期しない形式のタグデータ: {type(tags_data)}. タグを抽出できませんでした。")
+            return []

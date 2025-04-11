@@ -81,24 +81,24 @@ class ModelConfigRegistry:
         self._config_data = _load_config_from_file(config_path)
         logger.info(f"設定マネージャーが {config_path} から設定をロードしました。")
 
-    def get(self, model_name: str, key: str, default: Any = None) -> Any:
+    def get(self, model_name: str, key: str, default: Any = None) -> Any | None:
         """指定されたモデルとキーに対応する設定値を取得します。
 
-        設定ファイルに値があればそれを返し、なければ指定されたデフォルト値を返します。
+        前提: `model_name` は設定データ内に必ず存在します。
+
+        - `key` がモデルの設定内に存在する場合: その値を返します。
+        - `key` がモデルの設定内に存在しない場合: `default` 引数で指定された値を返します。
 
         Args:
-            model_name: 設定値を取得したいモデルの名前。
+            model_name: 設定値を取得したいモデルの名前 (設定内に存在することが前提)。
             key: 取得したい設定のキー。
-            default: 対応する値が見つからなかった場合に返すデフォルト値。
+            default: `key` が見つからなかった場合に返すデフォルト値 (デフォルト: None)。
 
         Returns:
-            取得した設定値。見つからなければ `default` 引数の値。
+            取得した設定値。`key` が見つからなければ `default` 引数の値。
         """
         model_config = self._config_data[model_name]
-        if default:
-            return model_config.get(key, default)
-        else:
-            return model_config.get(key, None)
+        return model_config.get(key, default)
 
     def get_all_config(self) -> dict[str, Any]:
         """ロード済みの設定データ全体を辞書として返します。"""
